@@ -25,13 +25,6 @@ The product’s primary value is speed and clarity: the user points their phone 
   - **Red**: likely NOVA 4 (Ultra-processed)
 - Provide a **brief explanation** and **ingredient highlights** supporting the classification.
 - Maintain **privacy-by-design**: no account, no retention of user scans.
-
-### 2.2 Non-Goals
-- Medical advice, dietary prescriptions, or allergy safety guarantees.
-- Long-term user history, favorites, personalization, or meal planning.
-- Full nutrition label parsing (calories/macros) beyond what is needed for NOVA inference.
-- Barcode database lookups (optional future enhancement; not required for v1).
-
 ---
 
 ## 3. Target Audience and Context
@@ -49,7 +42,7 @@ The product’s primary value is speed and clarity: the user points their phone 
   - Need for rapid interaction and one-handed use
 
 ### 3.3 Platform
-- Mobile application (iOS + Android)  
+- Mobile application (v1 : Android; Going forward could plan for iOS app as well.)  
 - Designed for real-time camera scanning.
 
 ---
@@ -299,9 +292,6 @@ The app must adhere to B2’s core principles as described in the referenced doc
 - Will v1 require offline-only operation, or is network access acceptable in stores?
 - Primary language support (English only for v1 vs multi-lingual)?
 - Is barcode scanning desired for faster product identification (future)?
-- Final decision on license: MIT vs Apache-2.0
-- Confirm allowed telemetry under B2 principles (none vs aggregated only)
-
 ---
 
 ## 15. Appendix: Suggested Repo Structure
