@@ -1,0 +1,45 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local machine / SDK config
+local.properties
+
+# Kotlin / Java compiled output
+*.class
+out/
+
+# APK / AAB / packaged artifacts
+*.apk
+*.ap_
+*.aab
+
+# Native / profiling artifacts
+*.hprof
+captures/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Logs / temp files
+*.log
+*.tmp
+*.swp
+
+# Project-specific generated reports and caches
+app/.DS_Store
+app/src/.DS_Store
+app/src/main/.DS_Store
+app/src/main/java/.DS_Store
+app/src/main/res/.DS_Store
+app/build/*
+
+# If the old web-export runtime is used again locally, keep its generated files out of git
+Ultra Processed Food Scanner/node_modules/
+Ultra Processed Food Scanner/dist/

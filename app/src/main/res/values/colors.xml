@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="upf_background">#0A0A0F</color>
+    <color name="upf_surface">#06060A</color>
+    <color name="upf_accent">#10B981</color>
+    <color name="upf_text">#FFFFFF</color>
+</resources>
