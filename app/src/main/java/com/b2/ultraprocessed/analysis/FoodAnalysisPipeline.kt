@@ -74,10 +74,12 @@ class FoodAnalysisPipeline(
         return classifyFromIngredientsText(
             rawText = ingredients,
             sourceImagePath = sourceImagePath,
-            sourceLabel = "USDA",
+            sourceLabel = "Barcode → USDA",
             sourceType = AnalysisSourceType.Barcode,
             productNameOverride = usda.productName,
             warnings = emptyList(),
+            scannedBarcode = barcodeCode.trim().takeIf { it.isNotEmpty() },
+            brandOwner = usda.brandOwner,
         )
     }
 
@@ -122,6 +124,8 @@ class FoodAnalysisPipeline(
         sourceType: AnalysisSourceType,
         productNameOverride: String?,
         warnings: List<String>,
+        scannedBarcode: String? = null,
+        brandOwner: String? = null,
     ): Result<AnalysisReport> {
         val normalized = IngredientTextNormalizer.normalize(rawText)
         if (normalized.length < MIN_NORMALIZED_LENGTH) {
@@ -149,6 +153,8 @@ class FoodAnalysisPipeline(
             sourceLabel = sourceLabel,
             warnings = warnings,
             labelImagePath = sourceImagePath,
+            scannedBarcode = scannedBarcode,
+            brandOwner = brandOwner,
         )
         return Result.success(
             AnalysisReport(

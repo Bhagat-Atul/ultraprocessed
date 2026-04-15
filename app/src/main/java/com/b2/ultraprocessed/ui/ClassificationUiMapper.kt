@@ -10,6 +10,8 @@ object ClassificationUiMapper {
         sourceLabel: String = "OCR",
         warnings: List<String> = emptyList(),
         labelImagePath: String? = null,
+        scannedBarcode: String? = null,
+        brandOwner: String? = null,
     ): ScanResultUi {
         val productName = productNameOverride?.takeIf { it.isNotBlank() }
             ?: deriveProductTitle(normalizedIngredientLine)
@@ -48,6 +50,8 @@ object ClassificationUiMapper {
             sourceLabel = sourceLabel,
             warnings = warnings,
             labelImagePath = labelImagePath,
+            scannedBarcode = scannedBarcode,
+            brandOwner = brandOwner,
         )
     }
 

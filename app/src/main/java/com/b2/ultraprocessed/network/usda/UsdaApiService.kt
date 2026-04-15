@@ -3,8 +3,12 @@ package com.b2.ultraprocessed.network.usda
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 
 class UsdaApiService(
     private val apiKeyProvider: UsdaApiKeyProvider,
@@ -17,17 +21,24 @@ class UsdaApiService(
         val apiKey = apiKeyProvider.getApiKey()
         if (apiKey.isBlank()) return@withContext emptyList()
 
+        // POST is the documented path; `dataType` must be a JSON array (GET array query encoding was unreliable).
         val url = "$BASE_URL/foods/search".toHttpUrl().newBuilder()
             .addQueryParameter("api_key", apiKey)
-            .addQueryParameter("query", query)
-            .addQueryParameter("pageSize", pageSize.toString())
-            .addQueryParameter("dataType", "Branded")
             .build()
-        val request = Request.Builder().url(url).get().build()
+        val json = JSONObject().apply {
+            put("query", query)
+            put("pageSize", pageSize.coerceIn(1, 200))
+            put("dataType", JSONArray().put("Branded"))
+        }
+        val body = json.toString().toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext emptyList()
-            val body = response.body?.string() ?: return@withContext emptyList()
-            UsdaJsonParser.parseSearchFoods(body)
+            val responseBody = response.body?.string() ?: return@withContext emptyList()
+            UsdaJsonParser.parseSearchFoods(responseBody)
         }
     }
 
@@ -48,5 +59,6 @@ class UsdaApiService(
 
     companion object {
         const val BASE_URL: String = "https://api.nal.usda.gov/fdc/v1"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

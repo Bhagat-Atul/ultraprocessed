@@ -1,16 +1,22 @@
 package com.b2.ultraprocessed.barcode
 
 import android.content.Context
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.Executors
 
 /**
@@ -22,7 +28,17 @@ class BarcodeLiveScanController(
 ) {
     private val appContext = context.applicationContext
     private var cameraProvider: ProcessCameraProvider? = null
-    private val barcodeClient = BarcodeScanning.getClient()
+    private val barcodeOptions = BarcodeScannerOptions.Builder()
+        .setBarcodeFormats(
+            Barcode.FORMAT_UPC_A,
+            Barcode.FORMAT_UPC_E,
+            Barcode.FORMAT_EAN_13,
+            Barcode.FORMAT_EAN_8,
+            Barcode.FORMAT_CODE_128,
+            Barcode.FORMAT_ITF,
+        )
+        .build()
+    private val barcodeClient = BarcodeScanning.getClient(barcodeOptions)
     private val analysisExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "zest-barcode-analysis").apply { isDaemon = true }
     }
@@ -31,6 +47,11 @@ class BarcodeLiveScanController(
     private var closed: Boolean = false
 
     private val delivered = AtomicBoolean(false)
+    private val onBarcodeRef = AtomicReference<(String) -> Unit>({})
+
+    fun updateBarcodeCallback(onBarcodeDetected: (String) -> Unit) {
+        onBarcodeRef.set(onBarcodeDetected)
+    }
 
     fun bind(
         previewView: PreviewView,
@@ -38,6 +59,7 @@ class BarcodeLiveScanController(
         onBarcodeDetected: (String) -> Unit,
         onBound: (() -> Unit)? = null,
     ) {
+        onBarcodeRef.set(onBarcodeDetected)
         closed = false
         delivered.set(false)
         val cameraProviderFuture = ProcessCameraProvider.getInstance(appContext)
@@ -50,7 +72,16 @@ class BarcodeLiveScanController(
                     useCase.surfaceProvider = previewView.surfaceProvider
                 }
 
+                val resolutionSelector = ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(1280, 720),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER,
+                        ),
+                    )
+                    .build()
                 val imageAnalysis = ImageAnalysis.Builder()
+                    .setResolutionSelector(resolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 
@@ -74,7 +105,7 @@ class BarcodeLiveScanController(
                             }
                             if (raw != null && delivered.compareAndSet(false, true)) {
                                 ContextCompat.getMainExecutor(appContext).execute {
-                                    if (!closed) onBarcodeDetected(raw)
+                                    if (!closed) onBarcodeRef.get().invoke(raw)
                                 }
                             }
                         }

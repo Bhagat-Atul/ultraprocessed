@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -143,7 +144,7 @@ fun ScannerScreen(
         )
     }
 
-    DisposableEffect(lifecycleOwner, hasCameraPermission, enableLiveCamera, scannerMode) {
+    DisposableEffect(lifecycleOwner, hasCameraPermission, enableLiveCamera) {
         onDispose {
             if (enableLiveCamera && hasCameraPermission) {
                 isCameraPipelineReady = false
@@ -165,9 +166,16 @@ fun ScannerScreen(
         label = "scan-progress",
     )
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         if (enableLiveCamera && !hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(scannerMode) {
+        when (scannerMode) {
+            ScannerMode.Label -> isBarcodeLiveReady = false
+            ScannerMode.BarcodeLive -> isCameraPipelineReady = false
         }
     }
 
@@ -289,6 +297,10 @@ fun ScannerScreen(
                         key(scannerMode) {
                             AndroidView(
                                 factory = { viewContext ->
+                                    when (scannerMode) {
+                                        ScannerMode.Label -> barcodeLiveController.unbind()
+                                        ScannerMode.BarcodeLive -> cameraController.unbind()
+                                    }
                                     PreviewView(viewContext).apply {
                                         scaleType = PreviewView.ScaleType.FILL_CENTER
                                         implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -309,6 +321,11 @@ fun ScannerScreen(
                                                 )
                                             }
                                         }
+                                    }
+                                },
+                                update = {
+                                    if (scannerMode == ScannerMode.BarcodeLive) {
+                                        barcodeLiveController.updateBarcodeCallback(onBarcodeScanned)
                                     }
                                 },
                                 // Do not call bind() from [update]: scan-line animation recomposes every frame.

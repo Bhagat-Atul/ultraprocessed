@@ -52,6 +52,25 @@ class UsdaRepositoryTest {
         val repo = UsdaRepository(FakeUsdaApiDataSource(searchFoods = emptyList()))
         assertNull(repo.lookupByBarcode("012345678905"))
     }
+
+    @Test
+    fun lookupByBarcode_returnsNull_whenSearchHitsHaveNoMatchingGtin() = runTest {
+        val repo = UsdaRepository(
+            FakeUsdaApiDataSource(
+                searchFoods = listOf(
+                    UsdaSearchFood(
+                        fdcId = 9L,
+                        description = "Unrelated snack",
+                        dataType = "Branded",
+                        brandOwner = "Other Co",
+                        gtinUpc = "999999999999",
+                        ingredients = "SUGAR",
+                    ),
+                ),
+            ),
+        )
+        assertNull(repo.lookupByBarcode("078742195760"))
+    }
 }
 
 private class FakeUsdaApiDataSource(

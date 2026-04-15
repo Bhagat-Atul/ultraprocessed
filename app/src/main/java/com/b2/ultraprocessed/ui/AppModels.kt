@@ -25,6 +25,10 @@ data class ScanResultUi(
     val warnings: List<String> = emptyList(),
     /** Local file path to the image that was analyzed (camera, gallery, or demo cache). */
     val labelImagePath: String? = null,
+    /** Barcode → USDA path: show product identity only until OCR/classification is wired. */
+    val isBarcodeLookupOnly: Boolean = false,
+    val scannedBarcode: String? = null,
+    val brandOwner: String? = null,
 )
 
 data class HistoryItemUi(
@@ -34,6 +38,7 @@ data class HistoryItemUi(
     val scannedAt: String,
     val summary: String,
     val capturedImagePath: String? = null,
+    val isBarcodeLookupOnly: Boolean = false,
 )
 
 enum class AppDestination {

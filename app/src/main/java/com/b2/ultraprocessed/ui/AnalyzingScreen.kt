@@ -89,10 +89,14 @@ private fun analysisSteps(
     Step(
         text = when (mode) {
             AnalysisMode.BarcodeImage -> "Extracting fallback OCR text if needed…"
-            AnalysisMode.BarcodeValue -> "Preparing ingredient text…"
+            AnalysisMode.BarcodeValue -> "Loading ingredient list from USDA…"
             else -> "Normalizing ingredient text…"
         },
-        tag = if (mode == AnalysisMode.BarcodeImage) "OCR" else "Normalize",
+        tag = when (mode) {
+            AnalysisMode.BarcodeImage -> "OCR"
+            AnalysisMode.BarcodeValue -> "USDA"
+            else -> "Normalize"
+        },
     ),
     Step("Running NOVA-style rules…", "Rules"),
     Step("Preparing verdict…", modelName),
@@ -167,7 +171,13 @@ fun AnalyzingScreen(
             onFailure = { e ->
                 val msg = e.message?.takeIf { it.isNotBlank() }
                     ?: "Analysis failed. Please try again."
-                onFailure(msg)
+                val forUi = if (mode == AnalysisMode.BarcodeValue && !barcodeValue.isNullOrBlank()) {
+                    val raw = barcodeValue.trim()
+                    "$msg\n\nBarcode read by scanner: $raw"
+                } else {
+                    msg
+                }
+                onFailure(forUi)
             },
         )
     }

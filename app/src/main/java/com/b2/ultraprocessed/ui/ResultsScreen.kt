@@ -55,12 +55,6 @@ fun ResultsScreen(
     onOpenHistory: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
-    var showIngredients by remember { mutableStateOf(true) }
-    val verdict = verdictColors(result.novaGroup)
-    val confidenceLabel = confidenceBandLabel(result.confidence)
-    val headline = shopperHeadline(result.novaGroup)
-    val emptyWatchListMessage = watchListEmptyCopy(result.novaGroup)
-    val nextSteps = nextStepLines(result.novaGroup)
 
     Column(
         modifier = Modifier
@@ -68,8 +62,12 @@ fun ResultsScreen(
             .background(DarkBg),
     ) {
         AppHeader(
-            title = "What this means",
-            subtitle = "From your ingredient label",
+            title = if (result.isBarcodeLookupOnly) "Product found" else "What this means",
+            subtitle = if (result.isBarcodeLookupOnly) {
+                "USDA FoodData Central · barcode lookup"
+            } else {
+                "From your ingredient label"
+            },
             navigationAction = backHeaderAction(onScanAgain),
             actions = listOf(
                 AppHeaderAction(
@@ -87,290 +85,11 @@ fun ResultsScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp),
         ) {
-            Text(
-                text = result.productName,
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                lineHeight = 24.sp,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Rules-based read · not medical advice",
-                color = Color.White.copy(alpha = 0.35f),
-                fontSize = 11.sp,
-                letterSpacing = 0.3.sp,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Surface(
-                color = Color.White.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(100.dp),
-            ) {
-                Text(
-                    text = "Source: ${result.sourceLabel}",
-                    color = Color.White.copy(alpha = 0.72f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            ScannedLabelPhotoSection(imagePath = result.labelImagePath)
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Surface(
-                color = verdict.cardColor,
-                shape = RoundedCornerShape(24.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, verdict.borderColor),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier.padding(22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(verdict.pillColor, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = verdict.label.take(1),
-                            color = verdict.textColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = verdict.label,
-                        color = verdict.textColor,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                    )
-                    Text(
-                        text = headline,
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "NOVA-style group ${result.novaGroup} · ${verdict.subLabel}",
-                        color = Color.White.copy(alpha = 0.32f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.6.sp,
-                    )
-                    Text(
-                        text = "$confidenceLabel signal (${(result.confidence * 100).toInt()}%) · ${result.engineLabel}",
-                        color = Color.White.copy(alpha = 0.28f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            Text(
-                text = "WHY YOU SEE THIS",
-                color = Color.White.copy(alpha = 0.32f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = result.summary,
-                color = Color.White.copy(alpha = 0.55f),
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-            )
-
-            if (result.warnings.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    color = Color(0x16F59E0B),
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        Color(0x44F59E0B),
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "DATA WARNING",
-                            color = Color(0xFFFBBF24),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        result.warnings.forEach { warning ->
-                            Text(
-                                text = warning,
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp,
-                                modifier = Modifier.padding(bottom = 4.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            Text(
-                text = "WATCH LIST (ADDITIVE CLUES)",
-                color = Color.White.copy(alpha = 0.32f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-
-            if (result.problemIngredients.isEmpty()) {
-                Surface(
-                    color = Color.White.copy(alpha = 0.05f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = emptyWatchListMessage,
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp,
-                        lineHeight = 21.sp,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
+            if (result.isBarcodeLookupOnly) {
+                BarcodeLookupResultBody(result = result)
             } else {
-                result.problemIngredients.forEach { ingredient ->
-                    Surface(
-                        color = Color.White.copy(alpha = 0.05f),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .background(verdict.textColor.copy(alpha = 0.9f), CircleShape),
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = ingredient.name,
-                                    color = Color.White.copy(alpha = 0.92f),
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 15.sp,
-                                )
-                            }
-                            Text(
-                                text = ingredient.reason,
-                                color = Color.White.copy(alpha = 0.48f),
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp,
-                                modifier = Modifier.padding(start = 18.dp, top = 6.dp),
-                            )
-                        }
-                    }
-                }
+                FullAnalysisResultBody(result = result)
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "YOUR NEXT MOVE",
-                color = Color.White.copy(alpha = 0.32f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            nextSteps.forEach { line ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.Start,
-                ) {
-                    Text(
-                        text = "·",
-                        color = verdict.textColor.copy(alpha = 0.85f),
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(end = 10.dp),
-                    )
-                    Text(
-                        text = line,
-                        color = Color.White.copy(alpha = 0.62f),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Surface(
-                onClick = { showIngredients = !showIngredients },
-                color = Color.White.copy(alpha = 0.05f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Full ingredient list (${result.allIngredients.size})",
-                            color = Color.White.copy(alpha = 0.82f),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            text = if (showIngredients) "Hide" else "Show",
-                            color = Emerald500.copy(alpha = 0.85f),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    if (showIngredients) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = result.allIngredients.joinToString(", "),
-                            color = Color.White.copy(alpha = 0.5f),
-                            lineHeight = 22.sp,
-                            fontSize = 14.sp,
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "NOVA groups foods by processing (1 = minimal → 4 = ultra-processed). This app uses on-device rules, not a full nutrition audit.",
-                color = Color.White.copy(alpha = 0.34f),
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-            )
 
             Spacer(modifier = Modifier.height(36.dp))
         }
@@ -389,7 +108,7 @@ fun ResultsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Emerald500),
                 ) {
                     Text(
-                        text = "Scan another label",
+                        text = if (result.isBarcodeLookupOnly) "Scan again" else "Scan another label",
                         color = Color.Black,
                         fontWeight = FontWeight.Bold,
                     )
@@ -431,6 +150,391 @@ fun ResultsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun BarcodeLookupResultBody(result: ScanResultUi) {
+    Text(
+        text = result.productName,
+        color = Color.White.copy(alpha = 0.92f),
+        fontSize = 22.sp,
+        fontWeight = FontWeight.SemiBold,
+        lineHeight = 28.sp,
+    )
+    if (!result.brandOwner.isNullOrBlank()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = result.brandOwner.orEmpty(),
+            color = Color.White.copy(alpha = 0.55f),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+        )
+    }
+    Spacer(modifier = Modifier.height(12.dp))
+    if (!result.scannedBarcode.isNullOrBlank()) {
+        Surface(
+            color = Color.White.copy(alpha = 0.06f),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = "BARCODE",
+                    color = Color.White.copy(alpha = 0.35f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = result.scannedBarcode.orEmpty(),
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.sp,
+                )
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(14.dp))
+    Surface(
+        color = Color.White.copy(alpha = 0.08f),
+        shape = RoundedCornerShape(100.dp),
+    ) {
+        Text(
+            text = "Source: ${result.sourceLabel}",
+            color = Color.White.copy(alpha = 0.72f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+    Spacer(modifier = Modifier.height(20.dp))
+    Text(
+        text = result.summary,
+        color = Color.White.copy(alpha = 0.55f),
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(
+        text = "Database reference, not medical advice. For a full label read, scan the ingredient panel with the camera.",
+        color = Color.White.copy(alpha = 0.34f),
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+    )
+}
+
+@Composable
+private fun FullAnalysisResultBody(result: ScanResultUi) {
+    var showIngredients by remember { mutableStateOf(true) }
+    val verdict = verdictColors(result.novaGroup)
+    val confidenceLabel = confidenceBandLabel(result.confidence)
+    val headline = shopperHeadline(result.novaGroup)
+    val emptyWatchListMessage = watchListEmptyCopy(result.novaGroup)
+    val nextSteps = nextStepLines(result.novaGroup)
+
+    Text(
+        text = result.productName,
+        color = Color.White.copy(alpha = 0.92f),
+        fontSize = 17.sp,
+        fontWeight = FontWeight.SemiBold,
+        lineHeight = 24.sp,
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Text(
+        text = "Rules-based read · not medical advice",
+        color = Color.White.copy(alpha = 0.35f),
+        fontSize = 11.sp,
+        letterSpacing = 0.3.sp,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Surface(
+        color = Color.White.copy(alpha = 0.08f),
+        shape = RoundedCornerShape(100.dp),
+    ) {
+        Text(
+            text = "Source: ${result.sourceLabel}",
+            color = Color.White.copy(alpha = 0.72f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+    if (!result.brandOwner.isNullOrBlank()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Brand: ${result.brandOwner}",
+            color = Color.White.copy(alpha = 0.42f),
+            fontSize = 12.sp,
+        )
+    }
+    if (!result.scannedBarcode.isNullOrBlank()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Barcode: ${result.scannedBarcode}",
+            color = Color.White.copy(alpha = 0.42f),
+            fontSize = 12.sp,
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+    ScannedLabelPhotoSection(imagePath = result.labelImagePath)
+
+    Spacer(modifier = Modifier.height(18.dp))
+
+    Surface(
+        color = verdict.cardColor,
+        shape = RoundedCornerShape(24.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, verdict.borderColor),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(verdict.pillColor, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = verdict.label.take(1),
+                    color = verdict.textColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = verdict.label,
+                color = verdict.textColor,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Text(
+                text = headline,
+                color = Color.White.copy(alpha = 0.72f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = "NOVA-style group ${result.novaGroup} · ${verdict.subLabel}",
+                color = Color.White.copy(alpha = 0.32f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.6.sp,
+            )
+            Text(
+                text = "$confidenceLabel signal (${(result.confidence * 100).toInt()}%) · ${result.engineLabel}",
+                color = Color.White.copy(alpha = 0.28f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp),
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(22.dp))
+
+    Text(
+        text = "WHY YOU SEE THIS",
+        color = Color.White.copy(alpha = 0.32f),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = result.summary,
+        color = Color.White.copy(alpha = 0.55f),
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
+    )
+
+    if (result.warnings.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Surface(
+            color = Color(0x16F59E0B),
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                Color(0x44F59E0B),
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = "DATA WARNING",
+                    color = Color(0xFFFBBF24),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                result.warnings.forEach { warning ->
+                    Text(
+                        text = warning,
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(22.dp))
+
+    Text(
+        text = "WATCH LIST (ADDITIVE CLUES)",
+        color = Color.White.copy(alpha = 0.32f),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+
+    if (result.problemIngredients.isEmpty()) {
+        Surface(
+            color = Color.White.copy(alpha = 0.05f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = emptyWatchListMessage,
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(16.dp),
+            )
+        }
+    } else {
+        result.problemIngredients.forEach { ingredient ->
+            Surface(
+                color = Color.White.copy(alpha = 0.05f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(verdict.textColor.copy(alpha = 0.9f), CircleShape),
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = ingredient.name,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        )
+                    }
+                    Text(
+                        text = ingredient.reason,
+                        color = Color.White.copy(alpha = 0.48f),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(start = 18.dp, top = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(20.dp))
+
+    Text(
+        text = "YOUR NEXT MOVE",
+        color = Color.White.copy(alpha = 0.32f),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+    nextSteps.forEach { line ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Start,
+        ) {
+            Text(
+                text = "·",
+                color = verdict.textColor.copy(alpha = 0.85f),
+                fontSize = 16.sp,
+                modifier = Modifier.padding(end = 10.dp),
+            )
+            Text(
+                text = line,
+                color = Color.White.copy(alpha = 0.62f),
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(18.dp))
+
+    Surface(
+        onClick = { showIngredients = !showIngredients },
+        color = Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Full ingredient list (${result.allIngredients.size})",
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+                Text(
+                    text = if (showIngredients) "Hide" else "Show",
+                    color = Emerald500.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            if (showIngredients) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = result.allIngredients.joinToString(", "),
+                    color = Color.White.copy(alpha = 0.5f),
+                    lineHeight = 22.sp,
+                    fontSize = 14.sp,
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Text(
+        text = "NOVA groups foods by processing (1 = minimal → 4 = ultra-processed). This app uses on-device rules, not a full nutrition audit.",
+        color = Color.White.copy(alpha = 0.34f),
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+    )
 }
 
 @Composable

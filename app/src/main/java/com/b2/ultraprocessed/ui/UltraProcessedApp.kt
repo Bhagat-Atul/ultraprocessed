@@ -196,4 +196,5 @@ private fun ScanResultUi.toHistoryItem(capturedImagePath: String?): HistoryItemU
         scannedAt = "Just now",
         summary = summary,
         capturedImagePath = capturedImagePath,
+        isBarcodeLookupOnly = isBarcodeLookupOnly,
     )

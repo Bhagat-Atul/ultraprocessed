@@ -12,6 +12,7 @@ import com.b2.ultraprocessed.ocr.OcrPipeline
 import com.b2.ultraprocessed.ocr.OcrResult
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,7 +48,7 @@ class FoodAnalysisPipelineTest {
 
         val result = pipeline.analyzeFromBarcodeImage("/tmp/fake-image.jpg").getOrThrow()
         assertEquals(AnalysisSourceType.Barcode, result.sourceType)
-        assertEquals("USDA", result.scanResult.sourceLabel)
+        assertEquals("Barcode → USDA", result.scanResult.sourceLabel)
     }
 
     @Test
@@ -81,7 +82,11 @@ class FoodAnalysisPipelineTest {
 
         val result = pipeline.analyzeFromBarcode("078742195760", sourceImagePath = null).getOrThrow()
         assertEquals(AnalysisSourceType.Barcode, result.sourceType)
-        assertEquals("USDA", result.scanResult.sourceLabel)
+        assertEquals("Barcode → USDA", result.scanResult.sourceLabel)
+        assertEquals("078742195760", result.scanResult.scannedBarcode)
+        assertEquals("Great Value", result.scanResult.brandOwner)
+        assertFalse(result.scanResult.isBarcodeLookupOnly)
+        assertTrue(result.scanResult.allIngredients.isNotEmpty())
     }
 
     @Test
@@ -120,6 +125,7 @@ class FoodAnalysisPipelineTest {
         val result = pipeline.analyzeFromImage("/tmp/fake-image.jpg")
         assertTrue(result.isFailure)
     }
+
 }
 
 private fun buildPipeline(

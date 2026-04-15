@@ -4,12 +4,13 @@ class UsdaRepository(
     private val dataSource: UsdaApiDataSource,
 ) {
     suspend fun lookupByBarcode(upc: String): UsdaFoodRecord? {
-        val normalizedUpc = normalizeUpc(upc)
-        if (normalizedUpc.isBlank()) return null
+        val searchDigits = upc.filter { it.isDigit() }
+        if (searchDigits.isBlank()) return null
 
-        val candidates = dataSource.searchFoods(query = normalizedUpc, pageSize = 25)
+        // Query with full scanned digits (keep leading zeros); normalization is only for GTIN comparison.
+        val candidates = dataSource.searchFoods(query = searchDigits, pageSize = 25)
         if (candidates.isEmpty()) return null
-        val picked = rankBarcodeCandidates(candidates, normalizedUpc) ?: return null
+        val picked = rankBarcodeCandidates(candidates, searchDigits) ?: return null
         val detail = dataSource.fetchFoodDetail(picked.fdcId)
         return toRecord(detail ?: picked.toDetailFallback())
     }
@@ -24,14 +25,12 @@ class UsdaRepository(
 
     private fun rankBarcodeCandidates(
         candidates: List<UsdaSearchFood>,
-        normalizedUpc: String,
+        scannedDigits: String,
     ): UsdaSearchFood? {
-        val exact = candidates.firstOrNull { normalizeUpc(it.gtinUpc).matchesUpc(normalizedUpc) }
-        if (exact != null) return exact
-
-        val branded = candidates.firstOrNull { it.dataType.equals("Branded", ignoreCase = true) }
-        if (branded != null) return branded
-        return candidates.firstOrNull()
+        val targetNorm = normalizeUpc(scannedDigits)
+        if (targetNorm.isBlank()) return null
+        // Only accept a row whose GTIN matches the scan — do not return an unrelated branded hit.
+        return candidates.firstOrNull { it.gtinUpc.matchesUpc(targetNorm) }
     }
 
     private fun toRecord(detail: UsdaFoodDetail): UsdaFoodRecord = UsdaFoodRecord(
