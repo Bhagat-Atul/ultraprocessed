@@ -29,6 +29,7 @@ class CameraCaptureController(
     fun bind(
         previewView: PreviewView,
         lifecycleOwner: LifecycleOwner,
+        cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA,
         onBound: (() -> Unit)? = null,
     ) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -48,7 +49,7 @@ class CameraCaptureController(
                 provider.unbindAll()
                 provider.bindToLifecycle(
                     lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    cameraSelector,
                     preview,
                     imageCapture,
                 )

@@ -57,6 +57,7 @@ class BarcodeLiveScanController(
         previewView: PreviewView,
         lifecycleOwner: LifecycleOwner,
         onBarcodeDetected: (String) -> Unit,
+        cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA,
         onBound: (() -> Unit)? = null,
     ) {
         onBarcodeRef.set(onBarcodeDetected)
@@ -117,7 +118,7 @@ class BarcodeLiveScanController(
                 provider.unbindAll()
                 provider.bindToLifecycle(
                     lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    cameraSelector,
                     preview,
                     imageAnalysis,
                 )

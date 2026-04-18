@@ -2,6 +2,7 @@ package com.b2.ultraprocessed.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.camera.core.CameraSelector
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -27,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Settings
@@ -34,6 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,6 +114,13 @@ fun ScannerScreen(
     /** False until live barcode analysis use case is bound. */
     var isBarcodeLiveReady by remember { mutableStateOf(false) }
     val hasUsdaKey = remember { BuildConfig.USDA_API_KEY.isNotBlank() }
+    var useFrontCamera by rememberSaveable { mutableStateOf(false) }
+    val cameraSelector = remember(useFrontCamera) {
+        if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+    }
+    val hasFrontCamera = remember {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FRONT)
+    }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -294,7 +305,7 @@ fun ScannerScreen(
                         .clip(RoundedCornerShape(28.dp)),
                 ) {
                     if (enableLiveCamera && hasCameraPermission) {
-                        key(scannerMode) {
+                        key(scannerMode, useFrontCamera) {
                             AndroidView(
                                 factory = { viewContext ->
                                     when (scannerMode) {
@@ -309,6 +320,7 @@ fun ScannerScreen(
                                                 cameraController.bind(
                                                     previewView = this,
                                                     lifecycleOwner = lifecycleOwner,
+                                                    cameraSelector = cameraSelector,
                                                     onBound = { isCameraPipelineReady = true },
                                                 )
                                             }
@@ -317,6 +329,7 @@ fun ScannerScreen(
                                                     previewView = this,
                                                     lifecycleOwner = lifecycleOwner,
                                                     onBarcodeDetected = onBarcodeScanned,
+                                                    cameraSelector = cameraSelector,
                                                     onBound = { isBarcodeLiveReady = true },
                                                 )
                                             }
@@ -433,6 +446,26 @@ fun ScannerScreen(
                             shape = RoundedCornerShape(10.dp),
                         ),
                 )
+
+                if (enableLiveCamera && hasCameraPermission && hasFrontCamera) {
+                    IconButton(
+                        onClick = {
+                            isCameraPipelineReady = false
+                            isBarcodeLiveReady = false
+                            useFrontCamera = !useFrontCamera
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 22.dp, bottom = 44.dp)
+                            .testTag(AppTestTags.SCANNER_FLIP_CAMERA),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Cameraswitch,
+                            contentDescription = "Switch between front and back camera",
+                            tint = Color.White.copy(alpha = 0.88f),
+                        )
+                    }
+                }
             }
 
             Surface(
@@ -444,8 +477,16 @@ fun ScannerScreen(
             ) {
                 Text(
                     text = when (scannerMode) {
-                        ScannerMode.Label -> "CameraX Preview · ML Kit OCR Ready"
-                        ScannerMode.BarcodeLive -> "Live barcode · USDA product lookup"
+                        ScannerMode.Label -> if (useFrontCamera) {
+                            "Front camera · ML Kit OCR"
+                        } else {
+                            "CameraX Preview · ML Kit OCR Ready"
+                        }
+                        ScannerMode.BarcodeLive -> if (useFrontCamera) {
+                            "Front camera · live barcode"
+                        } else {
+                            "Live barcode · USDA product lookup"
+                        }
                     },
                     color = Color.White.copy(alpha = 0.3f),
                     fontSize = 9.sp,
