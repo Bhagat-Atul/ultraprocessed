@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -94,10 +95,15 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(historyItems, key = { it.id }) { item ->
-                    val verdict = when (item.novaGroup) {
-                        1 -> Triple("PASS", Emerald400, Icons.Default.CheckCircle)
-                        2, 3 -> Triple("CAUTION", Color(0xFFFBBF24), Icons.Default.Warning)
-                        else -> Triple("AVOID", Color(0xFFF87171), Icons.Default.Warning)
+                    val verdict = when {
+                        item.isBarcodeLookupOnly ->
+                            Triple("USDA", Color(0xFF38BDF8), Icons.Default.QrCode)
+                        item.novaGroup == 1 ->
+                            Triple("PASS", Emerald400, Icons.Default.CheckCircle)
+                        item.novaGroup == 2 || item.novaGroup == 3 ->
+                            Triple("CAUTION", Color(0xFFFBBF24), Icons.Default.Warning)
+                        else ->
+                            Triple("AVOID", Color(0xFFF87171), Icons.Default.Warning)
                     }
                     Surface(
                         color = verdict.second.copy(alpha = 0.1f),
@@ -127,7 +133,11 @@ fun HistoryScreen(
                                 )
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = "NOVA ${item.novaGroup} · ${item.scannedAt}",
+                                    text = if (item.isBarcodeLookupOnly) {
+                                        "Barcode lookup · ${item.scannedAt}"
+                                    } else {
+                                        "NOVA ${item.novaGroup} · ${item.scannedAt}"
+                                    },
                                     color = Color.White.copy(alpha = 0.25f),
                                     fontSize = 11.sp,
                                 )

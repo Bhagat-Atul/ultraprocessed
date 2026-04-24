@@ -20,6 +20,15 @@ data class ScanResultUi(
     val problemIngredients: List<ProblemIngredient>,
     val allIngredients: List<String>,
     val engineLabel: String,
+    val confidence: Float = 0f,
+    val sourceLabel: String = "OCR",
+    val warnings: List<String> = emptyList(),
+    /** Local file path to the image that was analyzed (camera, gallery, or demo cache). */
+    val labelImagePath: String? = null,
+    /** Barcode → USDA path: show product identity only until OCR/classification is wired. */
+    val isBarcodeLookupOnly: Boolean = false,
+    val scannedBarcode: String? = null,
+    val brandOwner: String? = null,
 )
 
 data class HistoryItemUi(
@@ -29,6 +38,7 @@ data class HistoryItemUi(
     val scannedAt: String,
     val summary: String,
     val capturedImagePath: String? = null,
+    val isBarcodeLookupOnly: Boolean = false,
 )
 
 enum class AppDestination {
@@ -36,6 +46,7 @@ enum class AppDestination {
     Scanner,
     Analyzing,
     Results,
+    AnalysisError,
     Settings,
     History,
 }
@@ -90,6 +101,7 @@ object StubUiData {
                 "Gelatin",
             ),
             engineLabel = "Rules + demo stub",
+            confidence = 0.88f,
         ),
         ScanResultUi(
             productName = "Whole Grain Cereal Bar",
@@ -108,6 +120,7 @@ object StubUiData {
                 "Natural Flavor",
             ),
             engineLabel = "Rules + demo stub",
+            confidence = 0.6f,
         ),
         ScanResultUi(
             productName = "Organic Mixed Nuts",
@@ -116,6 +129,7 @@ object StubUiData {
             problemIngredients = emptyList(),
             allIngredients = listOf("Almonds", "Cashews", "Walnuts", "Pecans", "Sea Salt"),
             engineLabel = "Rules fallback stub",
+            confidence = 0.62f,
         ),
     )
 
