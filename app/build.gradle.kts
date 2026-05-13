@@ -126,6 +126,8 @@ val retiredSourcePaths = listOf(
     "src/main/java/com/b2/ultraprocessed/ui/DemoSamplePickerDialog.kt",
     "src/main/java/com/b2/ultraprocessed/classify/RulesClassifier.kt",
     "src/main/java/com/b2/ultraprocessed/classify/OnDeviceLLMClassifier.kt",
+    "src/main/java/com/b2/ultraprocessed/storage/datastore/AppSettings.kt",
+    "src/main/java/com/b2/ultraprocessed/storage/datastore/package-info.md",
     "src/test/java/com/b2/ultraprocessed/classify/ClassifierOrchestratorTest.kt",
     "src/test/java/com/b2/ultraprocessed/classify/RulesClassifierTest.kt",
     "src/test/java/com/b2/ultraprocessed/classify/NovaIngredientSampleFixturesTest.kt",

@@ -60,6 +60,8 @@ app/src/main/java/com/b2/ultraprocessed/ui/DemoImageSamples.kt
 app/src/main/java/com/b2/ultraprocessed/ui/DemoSamplePickerDialog.kt
 app/src/main/java/com/b2/ultraprocessed/classify/RulesClassifier.kt
 app/src/main/java/com/b2/ultraprocessed/classify/OnDeviceLLMClassifier.kt
+app/src/main/java/com/b2/ultraprocessed/storage/datastore/AppSettings.kt
+app/src/main/java/com/b2/ultraprocessed/storage/datastore/package-info.md
 app/src/test/java/com/b2/ultraprocessed/classify/ClassifierOrchestratorTest.kt
 app/src/test/java/com/b2/ultraprocessed/classify/RulesClassifierTest.kt
 app/src/test/java/com/b2/ultraprocessed/classify/NovaIngredientSampleFixturesTest.kt

@@ -1,5 +1,6 @@
 package com.b2.ultraprocessed.ui
 
+import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -46,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,11 +61,14 @@ import com.b2.ultraprocessed.ui.theme.Amber400
 import com.b2.ultraprocessed.ui.theme.Emerald500
 import com.b2.ultraprocessed.ui.audio.AppSoundEvent
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONException
+import org.json.JSONObject
 
 @Composable
 fun ResultsScreen(
@@ -187,7 +192,9 @@ private fun FullAnalysisResultBody(
     onAskAboutResult: suspend (String, (String) -> Unit) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
 ) {
     val verdict = verdictColors(result.novaGroup)
-    val headline = novaStaticComment(result.novaGroup, result.analyzedAtMillis)
+    val context = LocalContext.current
+    val novaCardCopy = remember(context) { NovaClassificationCardCopy.load(context.assets) }
+    val headline = novaCardCopy.headlineFor(result.novaGroup)
     val ingredientItems = remember(result.ingredientAssessments) {
         result.ingredientAssessments
             .sortedWith(compareBy<IngredientBubbleUi> { it.novaGroup }.thenBy { it.name.lowercase() })
@@ -510,108 +517,39 @@ private fun String.toReadableToken(): String {
     return String(chars)
 }
 
-private fun novaStaticComment(novaGroup: Int, seed: Long): String {
-    val options = when (novaGroup) {
-        1 -> NOVA_1_COMMENTS
-        2 -> NOVA_2_COMMENTS
-        3 -> NOVA_3_COMMENTS
-        else -> NOVA_4_COMMENTS
+private data class NovaClassificationCardCopy(
+    private val headlines: Map<Int, String>,
+) {
+    fun headlineFor(novaGroup: Int): String =
+        headlines[novaGroup].orEmpty().ifBlank {
+            DEFAULT_HEADLINES[novaGroup] ?: DEFAULT_HEADLINES.getValue(4)
+        }
+
+    companion object {
+        private const val ASSET_PATH = "nova_classification_cards.json"
+
+        fun load(assets: AssetManager): NovaClassificationCardCopy =
+            try {
+                val json = assets.open(ASSET_PATH).bufferedReader().use { it.readText() }
+                val cards = JSONObject(json).getJSONObject("novaClassificationCards")
+                NovaClassificationCardCopy(
+                    headlines = (1..4).associateWith { group ->
+                        cards.getJSONObject(group.toString()).getString("headline")
+                    },
+                )
+            } catch (_: IOException) {
+                NovaClassificationCardCopy(DEFAULT_HEADLINES)
+            } catch (_: JSONException) {
+                NovaClassificationCardCopy(DEFAULT_HEADLINES)
+            }
     }
-    val index = (seed.takeIf { it != 0L } ?: novaGroup.toLong())
-        .mod(options.size)
-    return options[index]
 }
 
-private val NOVA_1_COMMENTS = listOf(
-    "A clean-label direction with minimal processing signals.",
-    "Closest to whole-food territory in the NOVA framework.",
-    "A simpler processing profile than most packaged options.",
-    "Minimal processing signals make this the lightest NOVA tier.",
-    "This classification points toward basic, recognizable food handling.",
-    "A lower-processing result with fewer industrial cues.",
-    "The ingredient evidence fits a minimally processed pattern.",
-    "A straightforward profile with limited formulation complexity.",
-    "This sits near the fresh-and-simple end of the scale.",
-    "Processing appears restrained by NOVA standards.",
-    "A short path from source food to label.",
-    "The label evidence stays close to minimally processed food.",
-    "A calmer ingredient profile with limited industrial intervention.",
-    "This result suggests simplicity is doing the heavy lifting.",
-    "A favorable processing class for shoppers avoiding complexity.",
-    "Minimal-processing evidence is the main story here.",
-    "A practical green-light category from a processing lens.",
-    "This reads more like food than formulation.",
-    "The NOVA signal is comparatively gentle here.",
-    "A simpler classification with fewer processing red flags.",
-)
-
-private val NOVA_2_COMMENTS = listOf(
-    "A culinary ingredient classification, useful mainly in cooking.",
-    "This belongs more in the pantry than the snack aisle.",
-    "A cooking-helper profile rather than a complete food verdict.",
-    "The NOVA signal points to extracted or prepared culinary basics.",
-    "Best understood as an ingredient used to make other foods.",
-    "This is processing for preparation, not necessarily formulation.",
-    "A kitchen-building-block classification.",
-    "The evidence fits seasoning, cooking, or preparation use.",
-    "This category is about culinary function, not meal completeness.",
-    "A pantry-style NOVA result with a narrow role.",
-    "Think cooking input, not finished-product assessment.",
-    "The processing signal is functional and culinary.",
-    "This sits in the ingredient-support tier of NOVA.",
-    "A simple culinary ingredient profile.",
-    "Useful context: this class is usually consumed with other foods.",
-    "This classification flags a cooking component.",
-    "A refined or extracted ingredient, not a full food evaluation.",
-    "The NOVA pattern suggests preparation utility.",
-    "A category for things that help build meals.",
-    "Culinary ingredient territory: context matters.",
-)
-
-private val NOVA_3_COMMENTS = listOf(
-    "A processed food profile with recognizable ingredients.",
-    "Processing is present, but not automatically ultra-processed.",
-    "This sits in the middle: convenient, but worth comparing.",
-    "A familiar processed-food classification.",
-    "Recognizable ingredients with added processing steps.",
-    "This result suggests preservation or preparation beyond basics.",
-    "A moderate processing signal in NOVA terms.",
-    "Not the simplest tier, not the most industrial tier.",
-    "A reasonable place to compare labels side by side.",
-    "The evidence points to processed, not necessarily ultra-processed.",
-    "This category often rewards shorter ingredient lists.",
-    "A processed result where formulation details still matter.",
-    "A middle-tier classification with room for judgment.",
-    "Processing is doing some work here.",
-    "This lands in a practical watch-and-compare zone.",
-    "A processed-food signal with recognizable structure.",
-    "The label suggests added culinary ingredients or preservation.",
-    "A moderate NOVA class: not a free pass, not a panic button.",
-    "This is where ingredient-list length starts to matter.",
-    "A balanced classification that benefits from label comparison.",
-)
-
-private val NOVA_4_COMMENTS = listOf(
-    "A strong ultra-processing signal worth a closer look.",
-    "This classification points to industrial formulation territory.",
-    "A high-processing result for shoppers trying to reduce UPFs.",
-    "The NOVA signal suggests more formulation than simple cooking.",
-    "This is the class to compare carefully against simpler options.",
-    "Ultra-processed territory: convenience may be doing the talking.",
-    "A heavier processing profile by NOVA standards.",
-    "This result suggests industrial ingredients or additive systems.",
-    "A clear prompt to check for shorter-label alternatives.",
-    "The processing signal is strong enough to slow down and compare.",
-    "This sits at the most processed end of the NOVA scale.",
-    "A formulation-heavy classification.",
-    "This is where the label deserves a second read.",
-    "A high-UPF signal without needing nutrition-panel gymnastics.",
-    "The ingredient evidence points beyond ordinary kitchen processing.",
-    "A strong candidate for swap-or-compare shopping.",
-    "This classification suggests complexity is carrying the product.",
-    "Ultra-processed by pattern, not by vibes.",
-    "A red-tier processing result from the label evidence.",
-    "This is the NOVA group most shoppers use as a caution flag.",
+private val DEFAULT_HEADLINES = mapOf(
+    1 to "Pure and simple — closest to food in its natural form....",
+    2 to "Kitchen essential — refined from nature, made for cooking.",
+    3 to "Processed, not extreme — upgraded with added ingredients.",
+    4 to "Engineered food — industrially built, heavily processed.",
 )
 
 @Composable
