@@ -11,9 +11,8 @@ flowchart TD
     Phone[Android phone] --> App[Zest app]
     App --> UI[Jetpack Compose UI]
     UI --> Pipeline[FoodAnalysisPipeline]
-    Pipeline --> LLM[LLM provider]
+    Pipeline --> Proxy[Zest backend proxy]
     Pipeline --> USDA[USDA barcode lookup]
-    UI --> Room[Room local history]
     UI --> Secrets[Encrypted API keys]
     UI --> Prefs[Local preferences]
 ```
@@ -32,9 +31,9 @@ app/
 │   ├── camera/                       Camera capture and gallery import
 │   ├── barcode/                      Live ML Kit barcode scanning
 │   ├── ocr/                          ML Kit OCR fallback interface
-│   ├── network/llm/                  LLM calls, prompts, retries, result chat
+│   ├── network/llm/                  Backend proxy calls, retries, result chat
 │   ├── network/usda/                 USDA FoodData Central lookup
-│   └── storage/                      Room, encrypted secrets, preferences
+│   └── storage/                      Encrypted secrets and preferences
 └── src/main/res/
     ├── font/                         Inter and Space Grotesk font files
     ├── raw/                          App open, click, success, and error sounds
@@ -92,21 +91,17 @@ stateDiagram-v2
     Disclaimer --> Scanner: I agree + Next
     Scanner --> Analyzing: scan label / upload photo / scan barcode
     Scanner --> Settings
-    Scanner --> History
     Analyzing --> Results: success
     Analyzing --> AnalysisError: failure
     Results --> Scanner: scan again
-    Results --> History
-    History --> Results: back if opened from Results
     Settings --> Scanner
-    History --> Scanner
     AnalysisError --> Scanner
 ```
 
 The owner of this flow is `ui/UltraProcessedApp.kt`.
 The first-run disclaimer is also owned here: `AppPreferences.disclaimerAccepted` decides whether the user sees `DisclaimerScreen` after the splash. Settings can open the same disclaimer screen later.
 
-Current limitation: this is still not a true navigation stack. `UltraProcessedApp` tracks one `destination` plus a lightweight `previousDestination` for Settings and History. See [09-todo-roadmap.md](09-todo-roadmap.md) for the centralized navigation stack v2 task.
+Current limitation: this is still not a true navigation stack. `UltraProcessedApp` tracks one `destination` plus a lightweight `previousDestination` for Settings and Disclaimer navigation. See [09-todo-roadmap.md](09-todo-roadmap.md) for the centralized navigation stack v2 task.
 
 ## How Compose Screens Work Here
 
@@ -134,7 +129,7 @@ ScannerScreen calls onScan(path)
 UltraProcessedApp moves to Analyzing
 ```
 
-This keeps screens mostly display-focused and keeps navigation, storage, and provider wiring in one place.
+This keeps screens mostly display-focused and keeps navigation, session state, and provider wiring in one place.
 
 ## UI System
 
@@ -167,17 +162,17 @@ If you change text sizes, colors, or the brand logo, start in these shared files
 ```mermaid
 flowchart TD
     Tap[Tap Scan Label] --> Capture[CameraX captures image]
-    Capture --> File[Saved app-local image path]
+    Capture --> File[Temporary app-local image path]
     File --> Analyze[FoodAnalysisPipeline.analyzeFromImage]
     Analyze --> OCR[ML Kit OCR on device]
-    OCR --> Nova[LLM NOVA classification + non-food gate]
+    OCR --> Nova[Backend proxy NOVA classification + non-food gate]
     Nova -->|containsConsumableFoodItem false| Error[AnalysisErrorScreen]
-    Nova -->|containsConsumableFoodItem true| Ingredients[LLM corrected ingredients + UP markers]
-    Ingredients --> Allergens[LLM allergen detection from corrected names]
+    Nova -->|containsConsumableFoodItem true| Ingredients[Corrected ingredients + UP markers]
+    Ingredients --> Allergens[Allergen detection from corrected names]
     Nova --> Result[ScanResultUi]
     Ingredients --> Result
     Allergens --> Result
-    Result --> Room[Persist to Room history]
+    Result --> Cleanup[Delete temporary image]
     Result --> UI[ResultsScreen]
 ```
 
@@ -186,7 +181,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Upload[Tap Upload Photo] --> Picker[Android photo picker]
-    Picker --> Copy[Copy selected image into app-local storage]
+    Picker --> Copy[Copy selected image into temporary app-local storage]
     Copy --> Analyze[Same image analysis pipeline]
 ```
 
@@ -198,10 +193,10 @@ flowchart TD
     Live --> Code[UPC/EAN barcode value]
     Code --> USDA[USDA lookup if key exists]
     USDA --> Ingredients[Product ingredient text]
-    Ingredients --> Nova[LLM NOVA classification + non-food gate]
-    Nova --> Cleanup[LLM corrected ingredients + UP marker list]
+    Ingredients --> Nova[Backend proxy NOVA classification + non-food gate]
+    Nova --> Cleanup[Corrected ingredients + UP marker list]
     Cleanup --> Allergens[LLM allergens from corrected names]
-    Allergens --> History[Persist result]
+    Allergens --> Result[In-memory result only]
 ```
 
 The primary scanner button changes from `Scan Label` to `Scan Barcode` when barcode mode is selected.
@@ -210,28 +205,29 @@ The primary scanner button changes from `Scan Label` to `Scan Barcode` when barc
 
 ```mermaid
 flowchart TB
-    Secrets[API keys] --> Encrypted[EncryptedSharedPreferences]
-    History[Scan results] --> Room[Room database]
+    Secrets[USDA key] --> Encrypted[EncryptedSharedPreferences]
+    Results[Scan result + chat context] --> Memory[Compose session memory]
     Sound[Sound toggle] --> Prefs[SharedPreferences]
-    Images[Captured/imported images] --> Files[App-owned local files]
-    LLM[LLM provider] -. only when key is configured .-> Network[Network]
+    Images[Captured/imported images] --> Temporary[Temporary app-owned files]
+    Temporary --> Cleanup[Deleted after success, failure, or session cleanup]
+    Proxy[Zest backend proxy] -. text JSON only .-> Network[Network]
     USDA[USDA] -. barcode lookup only .-> Network
 ```
 
 Important boundaries:
 
-- API keys are never committed, logged, or shown back in plain text.
-- History is local to the device.
-- Captured images are local files.
+- AI model keys are not entered or stored in the Android app.
+- USDA API keys are never committed, logged, or shown back in plain text.
+- Scan history is not stored; the retired Room/history code lives only in `documentation/code-archive/session_only_storage/`.
+- Captured images are temporary files and are deleted after success, failure, or session cleanup.
 - Sound preferences are local app settings.
-- LLM providers never receive captured or uploaded images.
-- LLM providers receive extracted text JSON only when the user has configured a key.
+- The backend and model provider receive extracted text JSON, not captured or uploaded images.
 - The NOVA stage rejects non-food/non-ingredient scans with `containsConsumableFoodItem = false`; the app shows the returned human-readable reason instead of forcing later stages to fail.
 - USDA receives barcode/product lookup requests only when USDA access is configured.
 
 ## Build System
 
-Gradle is the Android build tool. Kotlin Symbol Processing, or KSP, is used by Room to generate database code.
+Gradle is the Android build tool. The active app does not use Room or KSP.
 
 Common commands:
 
@@ -248,7 +244,8 @@ The build includes guard tasks that run before Android builds:
 
 - `verifyNoRetiredSourceFiles` blocks retired demo, legacy, or rule-based classifier files from reappearing.
 - `verifyNoDatalessSources` blocks macOS dataless source placeholders that can make Gradle or KSP hang.
-- `verifySourceTreeForBuild` runs both checks.
+- `verifySessionOnlyStorage` blocks archived Room/history code or active persistence wiring from returning to `src/main`.
+- `verifySourceTreeForBuild` runs all source-tree checks.
 
 ## Safe Change Checklist
 
@@ -258,7 +255,7 @@ Use this checklist before handing a change to someone else:
 2. If you added text, put reusable user-facing strings in resources when appropriate.
 3. If you added images, fonts, sounds, or icons, keep them under `app/src/main/res`.
 4. If you touched analysis contracts, update `documentation/08-llm-api-contracts.md`.
-5. If you touched storage fields, update Room migrations and `documentation/06-storage-security.md`.
+5. If you touched session data, file cleanup, or privacy behavior, update `documentation/06-storage-security.md`.
 6. If you touched release behavior, update `documentation/07-testing-release.md`.
 7. Run at least `./gradlew :app:verifySourceTreeForBuild :app:compileDebugKotlin`.
 
@@ -268,11 +265,10 @@ Use this checklist before handing a change to someone else:
 | --- | --- |
 | Change the scanner home screen | `ui/ScannerScreen.kt` |
 | Change result chips or allergen sections | `ui/ResultsScreen.kt` |
-| Change scan history | `ui/HistoryScreen.kt` |
 | Change settings | `ui/SettingsScreen.kt` |
 | Change logo usage | `ui/AppBrand.kt` and `res/drawable/ic_zest_*.xml` |
 | Change fonts or type sizes | `ui/theme/Type.kt` and `ui/UiTextSizes.kt` |
 | Change analysis behavior | `analysis/FoodAnalysisPipeline.kt` |
-| Change LLM prompts | `app/src/main/assets/prompts/` |
-| Change local history schema | `storage/room/ScanResult.kt` and `app/schemas/` |
+| Change LLM prompts | `backend/prompts/` |
+| Restore archived history intentionally | `documentation/code-archive/session_only_storage/` and `documentation/06-storage-security.md` |
 | Plan v2 engineering/product work | `documentation/09-todo-roadmap.md` |

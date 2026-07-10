@@ -16,13 +16,12 @@ The UI design system is shared across screens:
 ## Main Files
 
 - `ui/MainActivity.kt` - Android entry point.
-- `ui/UltraProcessedApp.kt` - app shell, destination state, history persistence wiring, key presence state.
+- `ui/UltraProcessedApp.kt` - app shell, session destination state, and key presence state.
 - `ui/SplashScreen.kt` - branded Compose loading screen shown on cold start.
 - `ui/ScannerScreen.kt` - camera, barcode, and gallery upload entry points.
 - `ui/AnalyzingScreen.kt` - launches analysis and renders progress.
 - `ui/ResultsScreen.kt` - displays classification outcome.
 - `ui/SettingsScreen.kt` - encrypted API key entry and model selection.
-- `ui/HistoryScreen.kt` - local scan history.
 - `ui/AppBrand.kt` - shared Zest logo and app title composition.
 - `ui/UiTextSizes.kt` - app-wide text scale.
 
@@ -36,15 +35,11 @@ stateDiagram-v2
     Disclaimer --> Scanner: I agree + Next
     Scanner --> Analyzing: label, upload, barcode
     Scanner --> Settings
-    Scanner --> History
     Analyzing --> Results: success
     Analyzing --> AnalysisError: failure
     Results --> Scanner: scan again
-    Results --> History
-    History --> Results: back if opened from Results
     AnalysisError --> Scanner
     Settings --> Scanner
-    History --> Scanner
 ```
 
 ## Back Gesture Contract
@@ -53,7 +48,6 @@ Current behavior in `UltraProcessedApp.kt`:
 
 - `Scanner`: consumes system back as a no-op so accidental left-edge swipes do not close the app.
 - `Settings`: returns to the previous app page when available, otherwise Scanner.
-- `History`: returns to Results when opened from Results, otherwise Scanner.
 - `Results`: returns to Scanner.
 - `AnalysisError`: clears the error message and returns to Scanner.
 - `Analyzing`: returns to Scanner.
@@ -73,7 +67,7 @@ Implementation note: the app tracks `destination` and `previousDestination`. Thi
 - Current analysis result.
 - Encrypted key presence flags.
 - Local sound preference state.
-- Room-backed scan history.
+- Session-only result state with no scan persistence.
 - Result-scoped chat workflow.
 
 `ScannerScreen` owns short-lived camera UI state:
@@ -129,11 +123,10 @@ flowchart TB
 ## Screen Ownership Summary
 
 - `ResultsScreen` owns layout and display only.
-- `UltraProcessedApp` owns result-scoped chat wiring and history persistence.
+- `UltraProcessedApp` owns result-scoped chat wiring and session cleanup.
 - `AnalyzingScreen` owns progress and retry-status messaging.
 - `SettingsScreen` owns API key validation and metadata display.
 - `DisclaimerScreen` owns the exact legal/user-responsibility copy and the `I agree` gate.
-- `HistoryScreen` owns the history list presentation, usage summary strip, empty state, and clear-all action.
 - `SplashScreen` owns the branded loading animation only; it does not initialize network clients.
 
 ## Test Mode

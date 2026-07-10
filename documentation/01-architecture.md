@@ -1,13 +1,13 @@
 # Architecture
 
-Zest is a native Android app for label analysis. It launches through a branded Android splash and Compose splash, captures a food label image or barcode, extracts image text on device with ML Kit OCR, sends only extracted text through staged API workflows, and stores the final result locally for history and review.
+Zest is a native Android app for label analysis. It launches through a branded Android splash and Compose splash, captures a food label image or barcode, extracts image text on device with ML Kit OCR, sends only extracted text to the backend proxy, and keeps the result in memory for the active session only.
 
 ## Design Goals
 
 - Keep NOVA classification, ingredient cleanup, ultra-processed marker detection, and allergen logic API-driven.
 - Keep secret storage encrypted and out of source control.
 - Keep the UI deterministic and driven by explicit contracts.
-- Keep history local, deletable, and exportable by future work.
+- Never persist scan content, images, results, chat, usage, or failures.
 - Keep the pipeline modular so on-device OCR can feed the same API contracts later.
 - Keep brand, typography, sounds, and app chrome shared so screens stay visually consistent.
 - Keep build guards in front of KSP and release tasks so retired or dataless source files cannot silently ship.
@@ -19,10 +19,11 @@ flowchart LR
     Android[Android launch theme] --> UI[Compose UI]
     UI --> Orchestration[FoodAnalysisPipeline]
     Orchestration --> Input[Camera / Gallery / Barcode / OCR]
-    Orchestration --> LLM[network/llm]
+    Orchestration --> LLM[network/llm proxy client]
     Orchestration --> USDA[network/usda]
-    LLM --> Prompts[prompts/*.md]
-    UI --> Storage[Room + Encrypted Secrets + Preferences]
+    LLM --> Backend[Cloud Run /analyze]
+    Backend --> Prompts[backend-owned prompts]
+    UI --> Storage[Encrypted Secrets + Preferences]
     UI --> Resources[Fonts / Icons / Sounds]
 ```
 
@@ -55,18 +56,20 @@ sequenceDiagram
     participant Scanner as ScannerScreen
     participant Pipeline as FoodAnalysisPipeline
     participant LLM as FoodLabelLlmWorkflow
-    participant Room
 
     User->>Scanner: Capture or import image
     Scanner->>Pipeline: analyzeFromImage(path)
     Pipeline->>Pipeline: ML Kit OCR extracts text on device
     Pipeline->>LLM: classifyNova(text extraction)
+    LLM->>Backend: POST /analyze with OCR text
+    Backend-->>LLM: single structured analysis response
     LLM-->>Pipeline: NovaClassification or non-food marker
     Pipeline->>LLM: analyzeIngredientList(text extraction)
-    LLM-->>Pipeline: corrected ingredients + ultra-processed marker list
+    LLM-->>Pipeline: cached corrected ingredients + ultra-processed marker list
     Pipeline->>LLM: detectAllergens(corrected ingredients)
+    LLM-->>Pipeline: cached allergen detection
     Pipeline-->>Scanner: AnalysisReport
-    Scanner->>Room: Persist scan result and usage estimate
+    Scanner->>UI: Keep result in session memory
 ```
 
 ### Barcode
@@ -84,8 +87,10 @@ sequenceDiagram
     Pipeline->>USDA: lookupByBarcode(code)
     USDA-->>Pipeline: USDA product record
     Pipeline->>LLM: classifyNova(from USDA text)
-    Pipeline->>LLM: analyzeIngredientList(from USDA text)
-    Pipeline->>LLM: detectAllergens(corrected ingredients)
+    LLM->>Backend: POST /analyze with ingredient text
+    Backend-->>LLM: single structured analysis response
+    Pipeline->>LLM: analyzeIngredientList(from cached proxy result)
+    Pipeline->>LLM: detectAllergens(from cached proxy result)
     Pipeline-->>Scanner: AnalysisReport
 ```
 
@@ -95,9 +100,9 @@ sequenceDiagram
 - `ui/theme/` owns Material theme, colors, Inter, and Space Grotesk.
 - `ui/audio/` owns app sound playback and sound event mapping.
 - `analysis/` owns orchestration, stage timing, and failure policy.
-- `network/llm/` owns provider requests, retry repair, parsing, and prompt assets.
+- `network/llm/` owns backend proxy requests, parsing, and result-scoped chat clients. Analysis prompts are backend-owned.
 - `network/usda/` owns FoodData Central lookup, retry handling, and exact-hit ranking.
-- `storage/room/` owns scan persistence.
+- `documentation/code-archive/session_only_storage/` contains the retired persistence implementation and is outside active source sets.
 - `storage/secrets/` owns encrypted API key storage.
 - `storage/preferences/` owns non-secret local preferences such as the sound toggle.
 - `res/` owns fonts, raw sounds, launcher icon resources, splash drawables, colors, strings, and themes.
@@ -141,7 +146,7 @@ UltraProcessedApp
 ├── encrypted key presence flags
 ├── selected model id
 ├── sound preference state
-├── Room history flow
+├── Session-only result flow
 └── Result chat workflow
 ```
 

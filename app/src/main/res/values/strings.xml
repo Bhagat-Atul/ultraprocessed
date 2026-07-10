@@ -19,7 +19,7 @@
     <string name="results_chat_section">Chat more about this scan</string>
     <string name="results_chat_body">Ask only about this scan. The assistant is locked to the current result and refuses unrelated or injected instructions.</string>
     <string name="results_chat_placeholder_enabled">Ask about this scan only</string>
-    <string name="results_chat_placeholder_disabled">Add an API key to enable chat</string>
+    <string name="results_chat_placeholder_disabled">Result chat unavailable</string>
     <string name="results_chat_helper">No off-topic questions. No prompt injection.</string>
     <string name="results_chat_empty">Try asking what ingredient is the biggest concern, whether any allergens were detected, or how the NOVA group was chosen.</string>
     <string name="results_chat_status_checking">Checking the result context...</string>
@@ -29,7 +29,6 @@
     <string name="results_scan_note">This is the image analyzed for ingredient extraction. Zoom the real ingredient list when you can.</string>
     <string name="results_scan_again">Scan again</string>
     <string name="results_scan_another_label">Scan another label</string>
-    <string name="results_open_history">Open history</string>
     <string name="results_image_note">Database reference, not medical advice. For a full label read, scan the ingredient panel with the camera.</string>
     <string name="results_footer_note">NOVA groups foods by processing (1 = minimal \u2192 4 = ultra-processed). This app analyzes visible label evidence and is not a full nutrition or allergen audit.</string>
     <string name="results_no_ingredient_nova">Per-ingredient NOVA data was not returned by the API for this scan.</string>
@@ -37,50 +36,33 @@
     <string name="results_chat_locked_notice">Ask only about this scan. The assistant is locked to the current result and refuses unrelated or injected instructions.</string>
 
     <!-- Settings -->
-    <string name="settings_ping_api">Ping API</string>
-    <string name="settings_key_stored">Key stored</string>
-    <string name="settings_key_not_stored">No key stored</string>
+    <string name="settings_ping_api">Check service</string>
+    <string name="settings_key_stored">Service ready</string>
+    <string name="settings_key_not_stored">Service unavailable</string>
     <string name="settings_title">Settings</string>
     <string name="settings_subtitle">Zest</string>
-    <string name="settings_llm_key_section">LLM API key</string>
-    <string name="settings_llm_key_stored_description">An LLM API key is stored locally with Android Keystore-backed encryption. Enter a new key only when you want to replace it.</string>
-    <string name="settings_llm_key_empty_description">Your LLM API key is stored locally with Android Keystore-backed encryption. The saved value is never shown again after it is stored.</string>
-    <string name="settings_llm_key_empty_label">LLM API key</string>
-    <string name="settings_llm_key_replacement_label">Replacement LLM API key</string>
-    <string name="settings_llm_key_save_button">Save LLM key</string>
-    <string name="settings_llm_key_replace_button">Replace LLM key</string>
-    <string name="settings_llm_key_delete_button">Delete LLM key</string>
+    <string name="settings_llm_key_section">AI service</string>
+    <string name="settings_llm_key_stored_description">Zest uses the backend proxy for AI analysis. No model key is entered in the app.</string>
+    <string name="settings_llm_key_empty_description">Zest uses the backend proxy for AI analysis. No model key is entered in the app.</string>
+    <string name="settings_llm_key_empty_label">Service token</string>
+    <string name="settings_llm_key_replacement_label">Service token</string>
+    <string name="settings_llm_key_save_button">Save service token</string>
+    <string name="settings_llm_key_replace_button">Replace service token</string>
+    <string name="settings_llm_key_delete_button">Delete service token</string>
     <string name="settings_app_features_section">App features</string>
     <string name="settings_feature_camera">Camera preview &amp; image capture</string>
     <string name="settings_feature_ocr">On-device OCR</string>
-    <string name="settings_feature_history">Local scan history &amp; cached results</string>
-    <string name="settings_feature_security">Encrypted API key storage</string>
-    <string name="settings_feature_network">Direct HTTPS calls to model APIs</string>
+    <string name="settings_feature_security">Session-only data handling</string>
+    <string name="settings_feature_network">Secure HTTPS calls to the Zest backend proxy</string>
     <string name="settings_sound_title">Sound feedback</string>
     <string name="settings_sound_body">Play subtle cues for scan actions, successful analysis, and errors.</string>
     <string name="settings_sound_enabled">Sound effects enabled</string>
     <string name="settings_privacy_title">Privacy-first design</string>
-    <string name="settings_privacy_body">No sign-in required. Images stay on device. On-device OCR extracts label text locally, and only extracted text/corrected ingredient names are sent for classification, ingredient analysis, allergen detection, and result chat when an LLM key is saved. Scan history stays in local Room DB. API keys are encrypted via Android Keystore.</string>
+    <string name="settings_privacy_body">No sign-in required. Captured images and OCR text are used only for the active scan session. On-device OCR extracts label text locally, and only extracted text, scan result context, and chat questions are sent to the Zest backend proxy. No scan history or diagnostic data is stored.</string>
     <string name="settings_api_metadata">API metadata</string>
     <string name="settings_disclaimer_link_title">Disclaimer</string>
     <string name="settings_disclaimer_link_body">Review the app disclaimer, AI limitations, allergen warning, and user responsibility notice.</string>
     <string name="settings_repo_link_title">GitHub repository</string>
-
-    <!-- History -->
-    <string name="history_title">Scan History</string>
-    <string name="history_subtitle">Zest</string>
-    <string name="history_local_only_title">Stored locally</string>
-    <string name="history_local_only_notice">Stored locally via Room DB · Session only · No cloud sync</string>
-    <string name="history_local_only_body">Room DB keeps scan history on device. Nothing is synced to a cloud account.</string>
-    <string name="history_empty_state">No scans yet. Scan or upload an ingredient label to build local history.</string>
-    <string name="history_empty_title">No scans yet</string>
-    <string name="history_empty_body">Scan or upload an ingredient label to build your local history.</string>
-    <string name="history_usage_snapshot">Usage snapshot</string>
-    <string name="history_usage_subtitle">%1$d scans · estimated from stored model usage</string>
-    <string name="history_tokens_label">Tokens</string>
-    <string name="history_estimated_cost_label">Cost</string>
-    <string name="history_scans_label">Scans</string>
-    <string name="history_model_scans">%1$d scan%2$s · %3$s tokens · %4$s</string>
 
     <!-- Analysis -->
     <string name="analysis_error_title">Couldn’t analyze label</string>
@@ -90,7 +72,7 @@
     <string name="analysis_rate_limit_chip_retry">Try again once</string>
     <string name="analysis_rate_limit_chip_usage">Check API usage</string>
     <string name="analysis_try_again">Try again</string>
-    <string name="analysis_api_key_missing">Add an LLM API key in Settings for image extraction, NOVA classification, and allergen detection.</string>
+    <string name="analysis_api_key_missing">The AI analysis service is unavailable. Please try again later.</string>
     <string name="analysis_usda_key_unavailable">USDA data feed not available — barcode product lookup is disabled.</string>
     <string name="analysis_camera_permission_needed">Camera access needed</string>
     <string name="analysis_scanner_disabled">Scanner preview disabled</string>
@@ -105,7 +87,7 @@
     <string name="scanner_barcode_subtitle">Barcode scanner</string>
     <string name="scanner_home_title">Zest</string>
     <string name="scanner_home_subtitle">Healthier Picks</string>
-    <string name="scanner_missing_key_banner">Add your API key in Settings to enable live scanning</string>
+    <string name="scanner_missing_key_banner">The AI analysis service is unavailable</string>
     <string name="scanner_no_photo_selected">No photo selected.</string>
     <string name="scanner_camera_permission_required">Camera permission is required for live scanning.</string>
     <string name="scanner_camera_access_needed">Camera access needed</string>
@@ -130,7 +112,7 @@
     <string name="scanner_importing">Importing...</string>
     <string name="scanner_starting_barcode_camera">Starting barcode camera…</string>
     <string name="scanner_listening_barcode">Listening for barcode…</string>
-    <string name="scanner_local_storage_notice">Captured and imported photos are stored locally on this device.</string>
+    <string name="scanner_local_storage_notice">Captured and imported photos are used only for this scan session.</string>
     <string name="scanner_local_storage_test_notice">Scanner actions are running with live camera disabled for tests.</string>
     <string name="scanner_usda_missing_lookup">USDA API key missing in Settings — barcode lookup will not find products.</string>
 

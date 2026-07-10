@@ -37,7 +37,7 @@ data class ScanResult(
     // Human readable explanation of the verdict
     val explanation: String,
 
-    // Which provider workflow produced this result, for example "Gemini staged LLM".
+    // Which provider workflow produced this result, for example "Zest proxy LLM".
     val engineUsed: String,
 
     @ColumnInfo(defaultValue = "")

@@ -1,6 +1,6 @@
 # Zest
 
-Zest helps you scan packaged food labels and understand how processed they look. It focuses on the ingredient panel, gives a NOVA-style classification, highlights important ingredients, and keeps your scan history on your device.
+Zest helps you scan packaged food labels and understand how processed they look. It focuses on the ingredient panel, gives a NOVA-style classification, and highlights important ingredients without retaining scan content beyond the active session.
 
 ## Why The Name Zest?
 
@@ -20,10 +20,8 @@ In practice, Zest is about:
 - Show a NOVA-style result for the full label.
 - Break ingredients into compact color-coded bubbles.
 - Show allergen signals in a separate section.
-- Save scan history locally on your phone.
-- Show token and cost usage in scan history, using provider-reported usage when available.
 - Use the same Zest splash, launcher icon, typography, and sound setting across the app.
-- Keep API keys encrypted on device.
+- Use the Zest backend proxy for AI analysis without user AI keys.
 
 ## Feature List
 
@@ -42,26 +40,23 @@ Zest is designed as a consumer-grade ingredient intelligence layer: fast enough 
 
 - Images stay on device: captured and uploaded label images are never sent to AI providers.
 - On-device OCR first: ML Kit extracts text locally before any model call happens.
-- Text-only AI analysis: providers receive extracted ingredient text, not the original image.
-- Encrypted key storage: LLM and USDA API keys are stored through encrypted on-device storage.
-- Local-first history: scan results and failed scans are stored locally through Room.
+- Text-only AI analysis: the Zest backend proxy receives extracted ingredient text, not the original image.
+- USDA key storage: USDA barcode lookup keys are stored through encrypted on-device storage when configured.
 - No account required: users can analyze labels without sign-in or cloud sync.
+- Backend abuse controls are a required production hardening item; unauthenticated proxy deployment is only acceptable for testing or limited rollout.
 
 ### Product Intelligence
 
-- Staged AI pipeline: one call for NOVA classification, one call for ingredient cleanup and ultra-processed marker detection, one call for allergens, and chat only on demand.
+- Backend AI pipeline: the app calls the Zest proxy, which runs a backend-owned structured analysis prompt and result chat through Vertex AI.
 - Deterministic model settings: API calls use low-variance parameters for more consistent product behavior.
 - Result-scoped chat: users can ask follow-up questions about the current scan without turning the app into a general chatbot.
 - Barcode support: barcode scans can enrich analysis through USDA data when configured.
-- Failed scan recovery: failed image-based scans can appear in History with a rerun path.
-- Usage visibility: History shows provider-reported token and cost usage by model/provider when available, with local estimates as fallback.
 
 ### Operational Readiness
 
 - Professional Compose UI: shared typography, brand assets, spacing, colors, splash, launcher icon, and sound settings.
 - System back handling: Android back and edge-swipe gestures route within the app instead of accidentally closing it.
 - Build safeguards: source-tree checks block retired demo, legacy, rule-based, and dataless source files before build work proceeds.
-- Release-minded storage: Room migrations preserve history and support failed-scan records.
 - Developer documentation: architecture, pipeline contracts, security, testing, and roadmap docs are maintained under `documentation/`.
 
 ## How To Set It Up
@@ -83,7 +78,6 @@ Zest is designed as a consumer-grade ingredient intelligence layer: fast enough 
 3. Review the analysis result.
 4. Review the ingredient capsules to see which corrected ingredients were flagged as ultra-processed markers.
 5. Check the allergen block for separate allergen signals.
-6. Open `History` to revisit old scans.
 
 ## What The Result Means
 
@@ -98,7 +92,7 @@ Ingredient capsules are color-coded from the API-returned ultra-processed marker
 
 Zest is designed to keep your data local by default.
 
-- Scan history stays on your device.
+- Scan images, OCR text, and results exist only for the active session.
 - Saved keys are encrypted on device.
 - Saved keys are not shown back in plain text.
 - No sign-in is required.
@@ -142,12 +136,13 @@ If the app fails to analyze a label:
 
 - Check that the ingredient panel is visible and readable.
 - Try a clearer photo with better lighting.
-- Confirm your API key is saved in `Settings`.
+- Wait a moment and try again if the AI service is temporarily unavailable.
 - For barcode scans, confirm USDA lookup is configured.
 
 ## Project Links
 
 - Repository: https://github.com/benevolentbandwidth/ultraprocessed
 - License: [LICENSE/LICENSE.md](LICENSE/LICENSE.md)
+- Product requirements: [documentation/00-product-requirements.md](documentation/00-product-requirements.md)
 - Technical documentation: [documentation/README.md](documentation/README.md)
 - Non-Android architecture guide: [documentation/00-android-app-guide.md](documentation/00-android-app-guide.md)

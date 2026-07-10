@@ -9,7 +9,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -88,6 +90,7 @@ class ProxyFoodLabelLlmWorkflowTest {
         assertTrue(result.isFailure)
         val message = result.exceptionOrNull()?.message.orEmpty()
         assertTrue(message, message.contains("temporarily unavailable", ignoreCase = true))
+        assertTrue(message, !message.contains("vertex unavailable", ignoreCase = true))
     }
 
     private fun stubClient(callCount: AtomicInteger, code: Int, body: String): OkHttpClient =
@@ -95,6 +98,13 @@ class ProxyFoodLabelLlmWorkflowTest {
             .addInterceptor(
                 Interceptor { chain ->
                     callCount.incrementAndGet()
+                    val buffer = Buffer()
+                    chain.request().body?.writeTo(buffer)
+                    val requestBody = buffer.readUtf8()
+                    assertTrue(requestBody.contains("\"type\":\"analysis\""))
+                    assertTrue(requestBody.contains("\"ingredient_text\""))
+                    assertFalse(requestBody.contains("prompt", ignoreCase = true))
+                    assertFalse(requestBody.contains("schema", ignoreCase = true))
                     Response.Builder()
                         .request(chain.request())
                         .protocol(Protocol.HTTP_1_1)

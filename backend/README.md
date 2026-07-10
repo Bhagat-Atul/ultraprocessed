@@ -18,22 +18,25 @@ ultra-processing markers, and likely allergens.
 ```
 
 ### `POST /analyze`
-Request:
+
+Analysis request:
 ```json
 {
+  "type": "analysis",
   "ingredient_text": "water, sugar, palm oil, emulsifier (soy lecithin)",
   "barcode": "optional string",
   "product_name": "optional string",
   "locale": "optional string"
 }
 ```
-`ingredient_text` is required and capped at 20,000 characters (longer → HTTP 422).
+`type` may be omitted for backwards-compatible analysis calls. `ingredient_text` is required for analysis and capped at 20,000 characters (longer → HTTP 422).
 
-Response — the shape mirrors the app's existing Kotlin contract
+Analysis response — the shape mirrors the app's existing Kotlin contract
 (`NovaClassification` + `IngredientListAnalysis` + `AllergenDetection`), so future client
 integration is a direct deserialize:
 ```json
 {
+  "type": "analysis",
   "nova": {
     "containsConsumableFoodItem": true,
     "novaGroup": 4,
@@ -59,6 +62,46 @@ integration is a direct deserialize:
   "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0 }
 }
 ```
+
+### `POST /chat`
+
+Chat request:
+```json
+{
+  "question": "Which ingredient is the biggest concern?",
+  "result": {
+    "productName": "Choco Wafer",
+    "novaGroup": 4,
+    "summary": "Short plain-language explanation.",
+    "sourceLabel": "OCR",
+    "confidence": 0.85,
+    "ingredients": ["water", "sugar", "palm oil", "emulsifier"],
+    "ingredientAssessments": [
+      { "name": "emulsifier", "verdict": "nova-4", "reason": "Common marker." }
+    ],
+    "allergens": ["soy"],
+    "warnings": []
+  },
+  "history": [
+    { "role": "user", "text": "Why is this NOVA 4?" },
+    { "role": "assistant", "text": "Because the scan shows additive markers." }
+  ]
+}
+```
+
+Chat response:
+```json
+{
+  "type": "chat",
+  "reply": {
+    "allowed": true,
+    "answer": "Short scan-scoped answer.",
+    "reason": ""
+  },
+  "model": "gemini-2.5-flash",
+  "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0 }
+}
+```
 On model/auth/timeout failure the service returns HTTP 502 with
 `{"detail": {"error": "...", "message": "..."}}`.
 
@@ -70,6 +113,10 @@ On model/auth/timeout failure the service returns HTTP 502 with
 | `GCP_LOCATION`    | `us-east1`         | Vertex AI region                         |
 | `GEMINI_MODEL`    | `gemini-2.5-flash` | Model id                                 |
 | `GEMINI_TIMEOUT_MS` | `30000`          | Per-request model timeout (ms)           |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `700`     | Analysis output cap for the single structured call |
+| `GEMINI_CHAT_MAX_OUTPUT_TOKENS` | `512` | Result-chat output cap |
+| `ENABLE_OPENAPI_DOCS` | `false`        | Enables `/docs`, `/redoc`, and `/openapi.json` only for local/dev use |
+| `CORS_ALLOWED_ORIGINS` | empty         | Comma-separated browser origins allowed to call the API; empty disables CORS middleware |
 | `PORT`            | `8080`             | Server port (set by Cloud Run)           |
 
 ## Local development
@@ -86,13 +133,13 @@ pytest
 uvicorn main:app --reload --port 8080
 ```
 
-For a **live** `/analyze` call locally you need Application Default Credentials with
+For a **live** `/analyze` or `/chat` call locally you need Application Default Credentials with
 Vertex AI access:
 ```bash
 gcloud auth application-default login
 gcloud config set project b2-ultra-processed
 ```
-Without ADC, `/healthz` works and `/analyze` returns a 502 model-call error — expected.
+Without ADC, `/healthz` works and `/analyze` or `/chat` returns a 502 model-call error — expected.
 
 ### Example requests
 ```bash
@@ -101,7 +148,24 @@ curl http://localhost:8080/healthz
 curl -X POST http://localhost:8080/analyze \
   -H "Content-Type: application/json" \
   -d '{"ingredient_text":"water, sugar, palm oil, emulsifier (soy lecithin)","product_name":"Choco Wafer"}'
+
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Which ingredient is the biggest concern?","result":{"productName":"Choco Wafer","novaGroup":4,"summary":"Contains additive markers.","sourceLabel":"OCR","confidence":0.85,"ingredients":["sugar","soy lecithin"],"ingredientAssessments":[{"name":"soy lecithin","verdict":"nova-4","reason":"Emulsifier marker."}],"allergens":["soy"],"warnings":[]},"history":[]}'
 ```
+
+### Latency benchmark
+
+Unit tests prove contract and single-call behavior, not production p95. Use the benchmark against a
+deployed service before claiming the LLM-only path meets the p95 target:
+
+```bash
+python backend/benchmark_analyze.py \
+  https://ultraprocessed-ai-proxy-894254677159.us-east1.run.app \
+  --iterations 5
+```
+
+The script prints success rate, p50, p95, p99, and HTTP error counts for a fixed OCR corpus.
 
 ## Deploy to Cloud Run
 
@@ -119,11 +183,17 @@ The service account must have Vertex AI access (e.g. `roles/aiplatform.user`) on
 
 ## Security notes
 
-- **`--allow-unauthenticated` is for initial testing only.** Before production, protect the
-  endpoint with app-level auth — Firebase Auth / App Check, API Gateway, or another approved
-  mechanism — and remove public access.
-- **CORS is wide open (`*`) for development.** Restrict `allow_origins` to known origins for
-  production in `main.py`.
+- **Known deferred risk:** `--allow-unauthenticated` leaves `/analyze` and `/chat` publicly callable. This is
+  accepted only as a temporary testing or limited-rollout posture. Before broad production launch,
+  add real abuse controls such as Firebase App Check / Play Integrity, Firebase Auth, API Gateway
+  + IAM, Cloud Armor, per-device quotas, or another approved mechanism.
+- **No static mobile secret:** do not protect these endpoints with a secret compiled into the Android
+  app; it can be extracted and replayed.
+- **Docs are disabled by default.** Set `ENABLE_OPENAPI_DOCS=true` only for local development or
+  protected environments.
+- **CORS is disabled by default.** Android does not need CORS. Set `CORS_ALLOWED_ORIGINS` only for
+  known browser origins in dev/protected environments.
+- Public 5xx responses use generic messages. Provider/auth/stack details are kept in server logs.
 - No secrets, API keys, or service-account JSON are committed or required at runtime; auth is
   the Cloud Run service-account identity via ADC.
 
@@ -132,6 +202,12 @@ The service account must have Vertex AI access (e.g. `roles/aiplatform.user`) on
 - **Region + model:** Vertex AI regional availability for `gemini-2.5-flash` varies. If a deploy
   reports the model is unavailable in `us-east1`, set `GCP_LOCATION=global` (or `us-central1`)
   via `--set-env-vars` and redeploy.
-- **Single combined call:** this proxy makes one Gemini call returning all three sections. The
-  app currently performs three staged LLM calls (NOVA, ingredient cleanup, allergens). Wiring the
-  app to this proxy is intended as follow-up work once the Cloud Run URL exists.
+- **Backend-owned prompts:** Android sends scan data and chat questions only. The analysis and chat prompts live
+  in the backend runtime; Android does not send prompt text, schemas, or model instructions.
+- **Separate endpoint prompts:** `/analyze` uses the backend-owned full-analysis prompt, and `/chat`
+  uses the backend-owned result-chat prompt. The app never sends prompt text.
+- **Single structured analysis call:** `/analyze` uses one backend-owned full-analysis prompt
+  and Gemini structured JSON output. The prompt still instructs the model to reason internally in the
+  order food gate -> cleaned ingredients -> ultra-processed markers -> allergens -> NOVA.
+- **Archived staged prompts:** the prior staged analysis prompts are retained only under
+  `documentation/prompt-archive/` for reference. They are not runtime backend prompt inputs.

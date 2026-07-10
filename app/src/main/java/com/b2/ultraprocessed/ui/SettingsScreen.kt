@@ -111,27 +111,12 @@ private object SettingsType {
 
 @Composable
 fun SettingsScreen(
-    hasLlmApiKey: Boolean,
-    selectedModelId: String,
-    modelOptions: List<ModelOption>,
-    llmKeyMetadata: KeyMetadata? = null,
     soundEffectsEnabled: Boolean,
     onBack: () -> Unit,
-    onLlmApiKeySaved: suspend (String) -> KeySaveResult,
-    onLlmApiKeyPing: suspend (String?) -> KeySaveResult,
-    onLlmApiKeyDeleted: suspend () -> Boolean,
-    onModelSelected: (String) -> Unit,
     onSoundEffectsChanged: (Boolean) -> Unit,
     onOpenDisclaimer: () -> Unit,
 ) {
-    val selectedModel = modelOptions.firstOrNull { it.id == selectedModelId } ?: modelOptions.firstOrNull()
     val uriHandler = LocalUriHandler.current
-
-    LaunchedEffect(selectedModelId, modelOptions) {
-        if (selectedModel == null && modelOptions.isNotEmpty()) {
-            onModelSelected(modelOptions.first().id)
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -148,30 +133,6 @@ fun SettingsScreen(
                 .padding(horizontal = SettingsMetrics.ScreenPadding)
                 .padding(top = SettingsMetrics.Space2),
         ) {
-            UiSectionHeader(text = stringResource(R.string.settings_llm_key_section), icon = Icons.Default.Key)
-            SecureApiKeyCard(
-                hasKey = hasLlmApiKey,
-                storedDescription = stringResource(R.string.settings_llm_key_stored_description),
-                emptyDescription = stringResource(R.string.settings_llm_key_empty_description),
-                emptyLabel = stringResource(R.string.settings_llm_key_empty_label),
-                replacementLabel = stringResource(R.string.settings_llm_key_replacement_label),
-                saveLabel = stringResource(R.string.settings_llm_key_save_button),
-                replaceLabel = stringResource(R.string.settings_llm_key_replace_button),
-                deleteLabel = stringResource(R.string.settings_llm_key_delete_button),
-                metadata = llmKeyMetadata ?: selectedModel?.let {
-                    KeyMetadata(
-                        modelName = it.name,
-                        provider = it.provider,
-                        acceptsImages = it.supportsImages,
-                    )
-                },
-                onSave = onLlmApiKeySaved,
-                onPing = onLlmApiKeyPing,
-                onDelete = onLlmApiKeyDeleted,
-            )
-
-            Spacer(modifier = Modifier.height(SettingsMetrics.Space2))
-
             UiSectionHeader(text = stringResource(R.string.settings_sound_title), icon = Icons.AutoMirrored.Filled.VolumeUp)
             Surface(
                 color = Color.White.copy(alpha = 0.03f),
@@ -222,8 +183,6 @@ fun SettingsScreen(
                     TechRow(Icons.Default.CameraAlt, "Camera", stringResource(R.string.settings_feature_camera))
                     Spacer(modifier = Modifier.height(10.dp))
                     TechRow(Icons.Default.Visibility, "OCR", stringResource(R.string.settings_feature_ocr))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    TechRow(Icons.Default.Storage, "History", stringResource(R.string.settings_feature_history))
                     Spacer(modifier = Modifier.height(10.dp))
                     TechRow(Icons.Default.Security, "Security", stringResource(R.string.settings_feature_security))
                     Spacer(modifier = Modifier.height(10.dp))

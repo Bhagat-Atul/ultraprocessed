@@ -23,6 +23,6 @@ object AnalysisTelemetry {
 
     private fun log(message: String) {
         val formatted = "ZestAnalysis $message"
-        sink?.invoke(formatted) ?: println(formatted)
+        sink?.invoke(formatted)
     }
 }

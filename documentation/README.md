@@ -6,16 +6,19 @@ If you are not an Android developer, start with [00-android-app-guide.md](00-and
 
 ## Document Map
 
+- [00-product-requirements.md](00-product-requirements.md) - product problem, scope, scan-session definition, requirements, and acceptance criteria.
 - [00-android-app-guide.md](00-android-app-guide.md) - visual non-Android guide to how this Android app works and where to make changes.
 - [01-architecture.md](01-architecture.md) - system shape, runtime layers, and cross-cutting constraints.
 - [02-ui-navigation.md](02-ui-navigation.md) - Compose shell, destination ownership, and screen responsibilities.
 - [03-camera-ocr-barcode.md](03-camera-ocr-barcode.md) - capture, gallery import, OCR, and barcode routing.
 - [04-classification-analysis.md](04-classification-analysis.md) - extraction, API-only NOVA classification, ingredient cleanup, allergen detection, and result contracts.
 - [05-usda-networking.md](05-usda-networking.md) - USDA lookup, retries, cache behavior, and failure modes.
-- [06-storage-security.md](06-storage-security.md) - encrypted secrets, Room history, image retention, and privacy boundaries.
+- [06-storage-security.md](06-storage-security.md) - encrypted secrets, session-only scan data, transient images, and privacy boundaries.
 - [07-testing-release.md](07-testing-release.md) - debug tests, release verification, and hardening checklist.
 - [08-llm-api-contracts.md](08-llm-api-contracts.md) - exact LLM request flow, response classes, deterministic parameters, and retry semantics.
 - [09-todo-roadmap.md](09-todo-roadmap.md) - engineering and product backlog, including centralized navigation stack work for v2.
+- [10-responsible-ai-review.md](10-responsible-ai-review.md) - concise review of harmful gender, language, geographic, and socioeconomic behavior.
+- [11-maintenance-plan.md](11-maintenance-plan.md) - post-launch ownership, cadence, incident handling, patch policy, rollback, and support operations.
 
 ## Current Product Contract
 
@@ -33,7 +36,7 @@ flowchart TB
     IngredientCleanup --> UI
     Allergens --> UI
     Chat --> UI
-    UI --> Room[Room history]
+    UI --> Session[In-memory session state]
     UI --> Secrets[Encrypted secrets]
     UI --> Prefs[Sound preferences]
     USDA[USDA lookup] --> Pipeline
@@ -101,17 +104,19 @@ flowchart TB
 - Allergens have a separate UI block and a separate API contract based on corrected ingredient names.
 - OCR failures stop before any LLM request is made.
 - Typography, spacing, and brand usage should come from shared UI files rather than one-off screen overrides.
-- Usage totals in history use exact provider metadata when available, with local estimates only as a fallback.
+- Usage metadata remains in memory for the active result and is never persisted.
 
 ## Reading Order For A New Engineer
 
-1. Read [00-android-app-guide.md](00-android-app-guide.md).
-2. Read [01-architecture.md](01-architecture.md).
-3. Read [02-ui-navigation.md](02-ui-navigation.md).
-4. Read [04-classification-analysis.md](04-classification-analysis.md).
-5. Read [06-storage-security.md](06-storage-security.md).
-6. Read [07-testing-release.md](07-testing-release.md).
-7. Read [09-todo-roadmap.md](09-todo-roadmap.md) before planning v2 work.
+1. Read [00-product-requirements.md](00-product-requirements.md).
+2. Read [00-android-app-guide.md](00-android-app-guide.md).
+3. Read [01-architecture.md](01-architecture.md).
+4. Read [02-ui-navigation.md](02-ui-navigation.md).
+5. Read [04-classification-analysis.md](04-classification-analysis.md).
+6. Read [06-storage-security.md](06-storage-security.md).
+7. Read [07-testing-release.md](07-testing-release.md).
+8. Read [09-todo-roadmap.md](09-todo-roadmap.md) before planning v2 work.
+9. Read [11-maintenance-plan.md](11-maintenance-plan.md) when preparing a release or handling an operational issue.
 
 ## What To Avoid
 
