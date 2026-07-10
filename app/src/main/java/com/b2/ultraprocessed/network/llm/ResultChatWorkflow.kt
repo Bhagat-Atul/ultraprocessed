@@ -20,6 +20,7 @@ interface ResultChatWorkflow {
         result: ResultChatContext,
         question: String,
         modelId: String,
+        history: List<ResultChatHistoryMessage> = emptyList(),
         onStatus: (String) -> Unit = {},
     ): Result<ResultChatReply>
 }
@@ -46,6 +47,11 @@ data class ResultChatIngredientSignal(
     val name: String,
     val verdict: String,
     val reason: String,
+)
+
+data class ResultChatHistoryMessage(
+    val role: String,
+    val text: String,
 )
 
 object ResultChatWorkflowFactory {
@@ -86,9 +92,10 @@ class MultiProviderResultChatWorkflow(
         result: ResultChatContext,
         question: String,
         modelId: String,
+        history: List<ResultChatHistoryMessage>,
         onStatus: (String) -> Unit,
     ): Result<ResultChatReply> =
-        workflowFor(modelId).askAboutResult(result, question, modelId, onStatus)
+        workflowFor(modelId).askAboutResult(result, question, modelId, history, onStatus)
 
     private fun workflowFor(modelId: String): ResultChatWorkflow {
         val normalized = modelId.trim().lowercase()
@@ -114,6 +121,7 @@ class GeminiResultChatWorkflow(
         result: ResultChatContext,
         question: String,
         modelId: String,
+        history: List<ResultChatHistoryMessage>,
         onStatus: (String) -> Unit,
     ): Result<ResultChatReply> = withContext(Dispatchers.IO) {
         try {
@@ -161,7 +169,7 @@ class GeminiResultChatWorkflow(
     private fun requireApiKey(): String {
         val apiKey = apiKeyProvider.getApiKey()
         require(apiKey.isNotBlank()) {
-            "Add an LLM API key in Settings to use result chat."
+            "Direct Gemini chat requires an API key and is not used by the app proxy flow."
         }
         return apiKey
     }
@@ -288,6 +296,7 @@ class OpenAiCompatibleResultChatWorkflow(
         result: ResultChatContext,
         question: String,
         modelId: String,
+        history: List<ResultChatHistoryMessage>,
         onStatus: (String) -> Unit,
     ): Result<ResultChatReply> = withContext(Dispatchers.IO) {
         try {
@@ -333,7 +342,7 @@ class OpenAiCompatibleResultChatWorkflow(
     private fun requireApiKey(): String {
         val apiKey = apiKeyProvider.getApiKey()
         require(apiKey.isNotBlank()) {
-            "Add an API key in Settings for the selected provider."
+            "Direct provider chat requires an API key and is not used by the app proxy flow."
         }
         return apiKey
     }

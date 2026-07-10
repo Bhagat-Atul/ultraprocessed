@@ -119,7 +119,9 @@ class ProxyFoodLabelLlmWorkflow(
     }
 
     private suspend fun executeAnalyze(extraction: IngredientExtraction): CachedAnalysis {
-        val payload = JSONObject().put("ingredient_text", extraction.rawText)
+        val payload = JSONObject()
+            .put("type", "analysis")
+            .put("ingredient_text", extraction.rawText)
         if (extraction.productName.isNotBlank()) {
             payload.put("product_name", extraction.productName)
         }
@@ -170,17 +172,13 @@ class ProxyFoodLabelLlmWorkflow(
     }
 
     private fun proxyErrorMessage(statusCode: Int, body: String): String {
-        val detailMessage = runCatching {
-            JSONObject(body).optJSONObject("detail")?.optString("message").orEmpty()
-        }.getOrDefault("")
         return when {
             statusCode == 429 ->
                 "The AI service is temporarily busy (rate limit). Please wait a moment and try again."
             statusCode == 422 ->
                 "The analysis service could not read this label. Please try again."
             statusCode in 500..599 ->
-                "The AI service is temporarily unavailable. Please try again." +
-                    if (detailMessage.isNotBlank()) " ($detailMessage)" else ""
+                "The AI service is temporarily unavailable. Please try again."
             else -> "Analysis service request failed with HTTP $statusCode."
         }
     }
@@ -262,16 +260,16 @@ object ProxyHttpClientFactory {
     fun create(): OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(115, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
 }
 
-private fun IngredientExtraction.cacheKey(): String = productName + " " + rawText
+private fun IngredientExtraction.cacheKey(): String = productName + "\u0000" + rawText
 
-private fun List<String>.cacheKey(): String = joinToString(" ") { it.trim().lowercase() }
+private fun List<String>.cacheKey(): String = joinToString("\u0000") { it.trim().lowercase() }
 
 private fun JSONObject.optConfidence(name: String): Float =
     optDouble(name, 0.5).toFloat().coerceIn(0f, 1f)

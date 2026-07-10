@@ -1,38 +1,31 @@
 # LLM API Contracts
 
-This document is the source of truth for every model call in Zest. It covers:
+This document is the source of truth for every model-backed call in Zest. It covers:
 
-- the request flow for each LLM stage,
+- the backend proxy request flow,
 - the exact output classes the app expects,
 - deterministic request parameters,
 - and the retry behavior that keeps malformed responses out of the UI.
 
-The runtime is API-only for analysis, classification, allergen detection, and result chat. The app does not use rule-based classification as a production fallback.
+The runtime is API-only for analysis and result chat. The app does not use rule-based classification as a production fallback, and Android does not send analysis prompts or schemas.
 
-Usage and cost values shown in History use provider usage metadata when the API response includes it. OpenAI-compatible responses read `usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`; Gemini responses read `usageMetadata.promptTokenCount`, `usageMetadata.candidatesTokenCount`, and `usageMetadata.totalTokenCount`. If a provider omits usage metadata, the app falls back to the local estimate.
+Usage and cost values shown in the active result use provider usage metadata when the API response includes it. OpenAI-compatible responses read `usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`; Gemini responses read `usageMetadata.promptTokenCount`, `usageMetadata.candidatesTokenCount`, and `usageMetadata.totalTokenCount`. If a provider omits usage metadata, the app falls back to the local estimate. These values are never persisted.
 
 ## Files
 
 - `network/llm/FoodLabelLlmWorkflow.kt`
-- `network/llm/GeminiFoodLabelLlmWorkflow.kt`
-- `network/llm/OpenAiCompatibleFoodLabelLlmWorkflow.kt`
+- `network/llm/ProxyFoodLabelLlmWorkflow.kt`
+- `network/llm/ProxyResultChatWorkflow.kt`
 - `network/llm/ResultChatWorkflow.kt`
-- `network/llm/LlmContractRetry.kt`
-- `network/llm/MultiProviderFoodLabelLlmWorkflow.kt`
-- `assets/prompts/food_label_classification_prompt.md`
-- `assets/prompts/food_label_ingredient_analysis_prompt.md`
-- `assets/prompts/food_label_allergen_prompt.md`
-- `assets/prompts/food_label_response_validation_prompt.md`
-- `assets/prompts/food_label_result_chat_prompt.md`
+- `backend/prompts/food_label_full_analysis_prompt.md`
+- `backend/prompts/food_label_result_chat_prompt.md`
 
 ## Call Map
 
 | Stage | Input | Output | Notes |
 | --- | --- | --- | --- |
-| NOVA classification | OCR/USDA `IngredientExtraction` | `NovaClassification` | Text-only call. Classifies the whole label and gates non-food scans with `containsConsumableFoodItem`. |
-| Ingredient list analysis | OCR/USDA `IngredientExtraction` | `IngredientListAnalysis` | Text-only call. Corrects ingredient names and returns the ultra-processed subset for capsule coloration. |
-| Allergen detection | corrected ingredient names | `AllergenDetection` | Text-only call. Separate from NOVA classification and based on corrected names. |
-| Result chat | `ResultChatContext` + user question | `ResultChatReply` | Scopes questions to the current scan only. Rejects injection and off-topic prompts. |
+| Full analysis | OCR/USDA ingredient text | `NovaClassification`, `IngredientListAnalysis`, `AllergenDetection` | One backend `/analyze` call. Backend prompt internally orders food gate, cleaned ingredients, markers, allergens, then NOVA. |
+| Result chat | `ResultChatContext` + user question + history | `ResultChatReply` | One backend `/chat` call. Scopes questions to the current scan only. Rejects injection and off-topic prompts. |
 
 ## Transport Layer
 
@@ -252,7 +245,9 @@ Required fields:
 
 ## Validation Prompt
 
-`food_label_response_validation_prompt.md` remains in the assets folder as a schema-repair prompt, but the current production analysis path does not run a separate validation model call for the staged scan flow. Runtime parsing is handled in `LlmClassificationParser.kt` and the provider workflow parsers.
+The production analysis path is backend-owned: Android sends OCR/product input to `/analyze`, and the backend uses `food_label_full_analysis_prompt.md` plus Gemini structured output to return NOVA, ingredient, and allergen sections in one response. Android does not send prompt text or response schemas.
+
+The production result-chat path is also backend-owned: Android sends the current result context, user question, and in-session chat history to `/chat`, and the backend uses `food_label_result_chat_prompt.md` to produce a `ResultChatReply`. Chat payloads sent to `/analyze` are rejected.
 
 If validation is reintroduced, it must stay text-only, must not invent ingredients, and must be documented here with exact call order.
 
@@ -296,21 +291,22 @@ If all retries fail:
 ### Result chat
 
 - uses the current scan result as locked context,
+- calls backend `/chat`, not `/analyze`,
 - does not allow general conversation,
 - refuses prompt injection before the model is called when possible,
 - still validates the final JSON reply.
 
 ## Adding Another Provider
 
-To add a new provider, implement:
+To add a new direct provider path, implement:
 
 - `FoodLabelLlmWorkflow`
 - `ResultChatWorkflow`
 
 Then ensure:
 
-- it uses the same prompt assets,
-- it participates in `MultiProviderFoodLabelLlmWorkflow`,
+- it is explicitly selected by product policy instead of silently bypassing the backend proxy,
+- it does not receive prompt text from Android unless the BYOK/direct-provider feature is intentionally restored,
 - it respects deterministic request parameters,
 - it uses timeout-only retries unless contract retry behavior is deliberately expanded,
 - it returns the same output classes listed above.
@@ -324,4 +320,4 @@ If a payload cannot be parsed or validated, the user should see a clean analysis
 - Ingredient chip text should come from atomic ingredient names only.
 - Allergen strings should be atomic allergen names only.
 - Result chat is labeled as chat about the current scan and should stay scoped to that scan.
-- History cost and token rows should use exact provider usage metadata when available, with local estimates only as a fallback for providers that omit usage.
+- Active-result cost and token display should use exact provider usage metadata when available, with local estimates only as a fallback for providers that omit usage. No history rows are created.

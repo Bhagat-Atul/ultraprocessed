@@ -24,7 +24,6 @@ class AppChromeFunctionalTest {
 
     @Test
     fun scannerScreen_rendersSharedHeaderAndFooter_andRoutesHeaderActions() {
-        var historyClicks = 0
         var settingsClicks = 0
         var barcodeClicks = 0
 
@@ -36,7 +35,6 @@ class AppChromeFunctionalTest {
                     onScan = {},
                     onBarcodeScanned = { barcodeClicks += 1 },
                     onSettings = { settingsClicks += 1 },
-                    onHistory = { historyClicks += 1 },
                 )
             }
         }
@@ -44,12 +42,10 @@ class AppChromeFunctionalTest {
         composeRule.onNodeWithTag(AppTestTags.HEADER).assertIsDisplayed()
         composeRule.onNodeWithTag(AppTestTags.FOOTER).assertIsDisplayed()
         composeRule.onNodeWithText("Zest").assertIsDisplayed()
-        composeRule.onNodeWithTag(AppTestTags.HEADER_ACTION_HISTORY).performClick()
         composeRule.onNodeWithTag(AppTestTags.HEADER_ACTION_SETTINGS).performClick()
         composeRule.onNodeWithTag(AppTestTags.SCANNER_BARCODE_BUTTON).performClick()
 
         composeRule.runOnIdle {
-            assertEquals(1, historyClicks)
             assertEquals(1, settingsClicks)
             assertEquals(1, barcodeClicks)
         }
@@ -62,9 +58,8 @@ class AppChromeFunctionalTest {
                 ResultsScreen(
                     result = sampleScanResult,
                     onScanAgain = {},
-                    onOpenHistory = {},
                     chatEnabled = false,
-                    onAskAboutResult = { _, _ ->
+                    onAskAboutResult = { _, _, _ ->
                         Result.failure(IllegalStateException("Chat is disabled in this test."))
                     },
                 )
@@ -84,9 +79,8 @@ class AppChromeFunctionalTest {
                 ResultsScreen(
                     result = sampleScanResult.copy(novaGroup = 3),
                     onScanAgain = {},
-                    onOpenHistory = {},
                     chatEnabled = false,
-                    onAskAboutResult = { _, _ ->
+                    onAskAboutResult = { _, _, _ ->
                         Result.failure(IllegalStateException("Chat is disabled in this test."))
                     },
                 )
@@ -108,10 +102,9 @@ class AppChromeFunctionalTest {
                 ResultsScreen(
                     result = sampleScanResult,
                     onScanAgain = {},
-                    onOpenHistory = {},
                     chatEnabled = true,
                     onSoundEffect = { sounds += it },
-                    onAskAboutResult = { _, _ ->
+                    onAskAboutResult = { _, _, _ ->
                         Result.success(
                             ResultChatReply(
                                 allowed = true,

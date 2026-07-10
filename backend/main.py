@@ -18,9 +18,12 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from prompt import build_prompt
+from prompt import (
+    build_chat_prompt,
+    build_full_analysis_prompt,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ultraprocessed-ai-proxy")
@@ -30,26 +33,101 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "b2-ultra-processed")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-east1")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 REQUEST_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "30000"))
+FULL_ANALYSIS_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "700"))
+CHAT_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_CHAT_MAX_OUTPUT_TOKENS", "512"))
 MAX_INGREDIENT_CHARS = 20_000
+MAX_CHAT_QUESTION_CHARS = 1_000
+MAX_CHAT_HISTORY_MESSAGES = 12
+MAX_CHAT_HISTORY_CHARS = 4_000
+MAX_CHAT_RESULT_ITEMS = 80
+MAX_CHAT_RESULT_WARNINGS = 20
+ENABLE_DOCS = os.getenv("ENABLE_OPENAPI_DOCS", "false").strip().lower() == "true"
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
-app = FastAPI(title="Ultraprocessed AI Proxy", version="1.0.0")
-
-# CORS: permissive for development. Production should restrict origins (see README).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Ultraprocessed AI Proxy",
+    version="1.0.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
+
+if CORS_ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ALLOWED_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["POST", "GET"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
 
 
 # --- Request / response models ----------------------------------------------------
 class AnalyzeRequest(BaseModel):
-    ingredient_text: str = Field(..., min_length=1, max_length=MAX_INGREDIENT_CHARS)
+    # `type` is accepted only for older Android builds that send "analysis".
+    type: Optional[str] = None
+    ingredient_text: Optional[str] = Field(None, max_length=MAX_INGREDIENT_CHARS)
     barcode: Optional[str] = None
     product_name: Optional[str] = None
     locale: Optional[str] = None
+
+    # Accepted only to return a clear wrong-endpoint error if chat is sent here.
+    question: Optional[str] = Field(None, max_length=MAX_CHAT_QUESTION_CHARS)
+    result: Optional[dict[str, Any]] = None
+    history: Optional[list[dict[str, Any]]] = Field(None, max_length=MAX_CHAT_HISTORY_MESSAGES)
+
+
+class ChatRequest(BaseModel):
+    question: Optional[str] = Field(None, max_length=MAX_CHAT_QUESTION_CHARS)
+    result: Optional[dict[str, Any]] = None
+    history: Optional[list[dict[str, Any]]] = Field(None, max_length=MAX_CHAT_HISTORY_MESSAGES)
+
+
+class NovaSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    containsConsumableFoodItem: bool
+    novaGroup: int = Field(ge=0, le=4)
+    summary: str
+    rejectionReason: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    warnings: list[str]
+
+
+class UltraProcessedMarkerSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    reason: str
+
+
+class IngredientsSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    correctedIngredients: list[str]
+    ultraProcessedIngredients: list[UltraProcessedMarkerSchema]
+    confidence: float = Field(ge=0.0, le=1.0)
+    warnings: list[str]
+
+
+class AllergensSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    allergens: list[str]
+    confidence: float = Field(ge=0.0, le=1.0)
+    warnings: list[str]
+
+
+class FullAnalysisSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nova: NovaSchema
+    ingredients: IngredientsSchema
+    allergens: AllergensSchema
 
 
 # --- Vertex / Gemini client (lazy so import works without creds, e.g. in tests) ---
@@ -86,7 +164,7 @@ def call_gemini(prompt_text: str) -> tuple[str, dict]:
         config=types.GenerateContentConfig(
             temperature=0.0,
             top_p=1.0,
-            max_output_tokens=2048,
+            max_output_tokens=CHAT_MAX_OUTPUT_TOKENS,
             response_mime_type="application/json",
         ),
     )
@@ -101,8 +179,48 @@ def call_gemini(prompt_text: str) -> tuple[str, dict]:
     return (resp.text or "", usage)
 
 
+def response_usage(resp: Any) -> dict:
+    usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+    meta = getattr(resp, "usage_metadata", None)
+    if meta is not None:
+        usage = {
+            "inputTokens": getattr(meta, "prompt_token_count", 0) or 0,
+            "outputTokens": getattr(meta, "candidates_token_count", 0) or 0,
+            "totalTokens": getattr(meta, "total_token_count", 0) or 0,
+        }
+    return usage
+
+
+def call_full_analysis(input_json: dict[str, Any]) -> tuple[dict, dict]:
+    """Run the backend-owned full analysis prompt as one structured Gemini call."""
+    from google.genai import types
+
+    client = _get_client()
+    resp = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=build_full_analysis_prompt(input_json),
+        config=types.GenerateContentConfig(
+            temperature=0.0,
+            top_p=1.0,
+            max_output_tokens=FULL_ANALYSIS_MAX_OUTPUT_TOKENS,
+            response_mime_type="application/json",
+            response_schema=FullAnalysisSchema,
+        ),
+    )
+    parsed = getattr(resp, "parsed", None)
+    if isinstance(parsed, BaseModel):
+        return parsed.model_dump(), response_usage(resp)
+    if isinstance(parsed, dict):
+        return parsed, response_usage(resp)
+    if resp.text and resp.text.strip():
+        return json.loads(resp.text), response_usage(resp)
+    raise ValueError("empty model response")
+
+
 # --- Parsing helpers --------------------------------------------------------------
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_WHITESPACE_RE = re.compile(r"\s+")
 
 
 def parse_model_json(text: str) -> dict:
@@ -156,11 +274,16 @@ def coerce_response(data: dict, model: str, usage: dict) -> dict:
     else:
         nova_group = 0
 
+    corrected_ingredients = _as_str_list(ingredients.get("correctedIngredients"))
+    corrected_names = set(corrected_ingredients)
     markers = []
     for item in ingredients.get("ultraProcessedIngredients") or []:
         if isinstance(item, dict) and item.get("name"):
+            name = str(item["name"]).strip()
+            if name not in corrected_names:
+                continue
             markers.append(
-                {"name": str(item["name"]).strip(), "reason": str(item.get("reason", "")).strip()}
+                {"name": name, "reason": str(item.get("reason", "")).strip()}
             )
 
     return {
@@ -173,7 +296,7 @@ def coerce_response(data: dict, model: str, usage: dict) -> dict:
             "warnings": _as_str_list(nova.get("warnings")),
         },
         "ingredients": {
-            "correctedIngredients": _as_str_list(ingredients.get("correctedIngredients")),
+            "correctedIngredients": corrected_ingredients,
             "ultraProcessedIngredients": markers,
             "confidence": _as_float(ingredients.get("confidence")),
             "warnings": _as_str_list(ingredients.get("warnings")),
@@ -188,6 +311,190 @@ def coerce_response(data: dict, model: str, usage: dict) -> dict:
     }
 
 
+def clean_input_text(value: Optional[str]) -> str:
+    cleaned = _CONTROL_CHAR_RE.sub(" ", value or "")
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
+
+
+def bounded_text(value: Any, max_chars: int) -> str:
+    return clean_input_text(str(value) if value is not None else "")[:max_chars]
+
+
+def bounded_str_list(value: Any, max_items: int, max_chars: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        item
+        for item in (bounded_text(raw, max_chars) for raw in value[:max_items])
+        if item
+    ]
+
+
+def split_ingredients(text: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[,;\n•]+", text) if part.strip()]
+
+
+def build_full_analysis_input(req: AnalyzeRequest) -> dict[str, Any]:
+    raw_text = clean_input_text(req.ingredient_text)
+    payload: dict[str, Any] = {
+        "rawIngredientText": raw_text,
+        "ingredients": split_ingredients(raw_text),
+    }
+    product_name = clean_input_text(req.product_name)
+    barcode = clean_input_text(req.barcode)
+    locale = clean_input_text(req.locale)
+    if product_name:
+        payload["productName"] = product_name
+    if barcode:
+        payload["barcode"] = barcode
+    if locale:
+        payload["locale"] = locale
+    return payload
+
+
+def analyze_food_label(req: AnalyzeRequest) -> dict:
+    if not clean_input_text(req.ingredient_text):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "ingredient_text_required", "message": "ingredient_text is required."},
+        )
+
+    response, usage = call_full_analysis(build_full_analysis_input(req))
+    return coerce_response(response, GEMINI_MODEL, usage) | {"type": "analysis"}
+
+
+def trim_chat_history(history: Optional[list[dict[str, Any]]]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for item in history or []:
+        role = str(item.get("role", "")).strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        text = str(item.get("text", "")).replace("\x00", "").strip()
+        if text:
+            normalized.append({"role": role, "text": text[:1000]})
+
+    trimmed: list[dict[str, str]] = []
+    total_chars = 0
+    for item in reversed(normalized[-MAX_CHAT_HISTORY_MESSAGES:]):
+        item_chars = len(item["text"])
+        if total_chars + item_chars > MAX_CHAT_HISTORY_CHARS:
+            remaining = MAX_CHAT_HISTORY_CHARS - total_chars
+            if remaining <= 0:
+                break
+            item = {"role": item["role"], "text": item["text"][-remaining:]}
+            item_chars = len(item["text"])
+        trimmed.append(item)
+        total_chars += item_chars
+    return list(reversed(trimmed))
+
+
+def sanitized_chat_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Keep only scan-result fields the chat prompt needs, with bounded text."""
+    assessments = []
+    for item in result.get("ingredientAssessments") or []:
+        if not isinstance(item, dict):
+            continue
+        name = bounded_text(item.get("name"), 120)
+        if not name:
+            continue
+        assessments.append(
+            {
+                "name": name,
+                "verdict": bounded_text(item.get("verdict"), 40),
+                "reason": bounded_text(item.get("reason"), 240),
+            }
+        )
+        if len(assessments) >= MAX_CHAT_RESULT_ITEMS:
+            break
+
+    try:
+        nova_group = int(result.get("novaGroup", 0))
+    except (TypeError, ValueError):
+        nova_group = 0
+
+    return {
+        "productName": bounded_text(result.get("productName"), 160),
+        "novaGroup": min(4, max(0, nova_group)),
+        "summary": bounded_text(result.get("summary"), 500),
+        "sourceLabel": bounded_text(result.get("sourceLabel"), 80),
+        "confidence": _as_float(result.get("confidence")),
+        "ingredients": bounded_str_list(result.get("ingredients"), MAX_CHAT_RESULT_ITEMS, 120),
+        "ingredientAssessments": assessments,
+        "allergens": bounded_str_list(result.get("allergens"), 20, 80),
+        "warnings": bounded_str_list(result.get("warnings"), MAX_CHAT_RESULT_WARNINGS, 200),
+    }
+
+
+def looks_like_injection_attempt(*texts: str) -> bool:
+    joined = "\n".join(texts).lower()
+    return any(marker in joined for marker in INJECTION_MARKERS)
+
+
+def refusal_chat_response(reason: str) -> dict:
+    return {
+        "type": "chat",
+        "reply": {
+            "allowed": False,
+            "answer": "I can only answer questions about this scan result.",
+            "reason": reason,
+        },
+        "model": GEMINI_MODEL,
+        "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0},
+    }
+
+
+def coerce_chat_reply(data: dict, usage: dict) -> dict:
+    allowed = bool(data.get("allowed", False))
+    answer = str(data.get("answer", "")).strip() or (
+        "I received the scan context, but the assistant did not return a usable sentence."
+    )
+    reason = str(data.get("reason", "")).strip()
+    return {
+        "type": "chat",
+        "reply": {"allowed": allowed, "answer": answer, "reason": reason},
+        "model": GEMINI_MODEL,
+        "usage": usage,
+    }
+
+
+def analyze_chat(req: ChatRequest) -> dict:
+    question = (req.question or "").strip()
+    if not question:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "question_required", "message": "question is required."},
+        )
+    if not isinstance(req.result, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "result_required", "message": "result is required."},
+        )
+
+    history = trim_chat_history(req.history)
+    history_text = "\n".join(item["text"] for item in history)
+    if looks_like_injection_attempt(question, history_text):
+        return refusal_chat_response("Prompt injection attempt detected.")
+
+    raw_text, usage = call_gemini(
+        build_chat_prompt(sanitized_chat_result(req.result), question, history)
+    )
+    return coerce_chat_reply(parse_model_json(raw_text), usage)
+
+
+INJECTION_MARKERS = (
+    "ignore previous",
+    "ignore the above",
+    "system prompt",
+    "developer message",
+    "jailbreak",
+    "act as",
+    "pretend to be",
+    "reveal",
+    "bypass",
+    "prompt injection",
+)
+
+
 # --- Endpoints --------------------------------------------------------------------
 @app.get("/healthz")
 def healthz() -> dict:
@@ -196,31 +503,62 @@ def healthz() -> dict:
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest) -> dict:
-    prompt_text = build_prompt(
-        ingredient_text=req.ingredient_text,
-        product_name=req.product_name,
-        barcode=req.barcode,
-        locale=req.locale,
-    )
     try:
-        raw_text, usage = call_gemini(prompt_text)
-    except Exception as exc:  # network, auth, timeout, model errors
-        logger.exception("Gemini call failed")
-        raise HTTPException(
-            status_code=502,
-            detail={"error": "model_call_failed", "message": str(exc)},
-        )
-
-    try:
-        parsed = parse_model_json(raw_text)
+        operation = (req.type or "").strip().lower()
+        if operation == "chat" or req.question is not None or req.result is not None or req.history is not None:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "wrong_endpoint", "message": "Use /chat for result chat."},
+            )
+        if operation and operation != "analysis":
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "unsupported_type", "message": "type must be analysis when provided."},
+            )
+        return analyze_food_label(req)
     except ValueError as exc:
         logger.warning("Model returned unparseable output: %s", exc)
         raise HTTPException(
             status_code=502,
             detail={
                 "error": "model_response_unparseable",
-                "message": str(exc),
+                "message": "AI model returned an invalid response.",
+            },
+        )
+    except Exception as exc:  # network, auth, timeout, model errors
+        if isinstance(exc, HTTPException):
+            raise exc
+        logger.exception("Gemini call failed")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "model_call_failed",
+                "message": "AI model call failed.",
             },
         )
 
-    return coerce_response(parsed, GEMINI_MODEL, usage)
+
+@app.post("/chat")
+def chat(req: ChatRequest) -> dict:
+    try:
+        return analyze_chat(req)
+    except ValueError as exc:
+        logger.warning("Model returned unparseable output: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "model_response_unparseable",
+                "message": "AI model returned an invalid response.",
+            },
+        )
+    except Exception as exc:  # network, auth, timeout, model errors
+        if isinstance(exc, HTTPException):
+            raise exc
+        logger.exception("Gemini call failed")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "model_call_failed",
+                "message": "AI model call failed.",
+            },
+        )

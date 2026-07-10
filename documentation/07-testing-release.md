@@ -37,7 +37,7 @@ Covered areas:
 - Ingredient normalization.
 - USDA JSON parsing.
 - USDA repository UPC matching and cache behavior.
-- Food analysis pipeline staged API workflow and invalid-image handling.
+- Food analysis pipeline proxy API workflow and invalid-image handling.
 - Prompt contract parsing for NOVA classification, ingredient analysis, allergen detection, validation prompt presence, and result chat.
 
 ## Android Tests
@@ -53,7 +53,7 @@ Covered areas:
 - Shared chrome rendering.
 - Scanner header actions.
 - Scanner startup without camera hardware in test mode.
-- History and migration behavior.
+- Session-only cleanup and no-persistence behavior.
 
 ## Release Build
 
@@ -94,20 +94,23 @@ flowchart TB
 - Release APK assembles with signing environment variables present.
 - Android test APK assembles.
 - `rg "BuildConfig|local.properties|USDA_API_KEY" app/src/main app/build.gradle.kts` shows no embedded key source.
-- Room schema is exported under `app/schemas`.
-- Room migration instrumentation test compiles.
-- Settings saves API keys without showing saved values again.
-- Image analysis uses the user-provided LLM key only through `SecretKeyManager`.
-- Prompt assets exist for NOVA classification, ingredient analysis, allergen detection, response validation, and result chat.
+- The archived Room migration test is outside the active Android source tree.
+- Settings does not expose AI model key entry.
+- Image analysis and result chat call the Zest backend proxy without user AI keys.
+- Release builds do not enable analysis diagnostics unless `ZEST_ANALYSIS_DIAGNOSTICS_ENABLED=true` is explicitly set.
+- Backend 5xx responses and Android proxy errors do not expose provider exception details.
+- Proxy analysis timeout budgets are aligned with the backend single-call Gemini analysis path.
+- Live backend benchmark output records success rate, p50, p95, p99, and error counts before claiming p95 latency.
+- Public backend deployment with `--allow-unauthenticated` is documented as a temporary risk; broad production launch requires an abuse-control layer.
+- Backend-owned prompt assets exist for full analysis and result chat; Android does not send prompt text or schemas.
 - Barcode lookup fails gracefully without a USDA key.
-- Scan history persists after navigating away from Results.
-- Failed image analyses can persist in History with a failure message and a rerun action when an image path exists.
-- System back and left-edge swipe stay inside the app from Scanner, Settings, History, Results, Analyzing, and AnalysisError.
-- Delete from History removes the Room row and locally stored scan image when the image is under app-owned storage.
+- Scan results and failed analyses remain only in the active session.
+- Capture/import files are deleted after analysis and after relaunch cleanup.
+- System back and left-edge swipe stay inside the app from Scanner, Settings, Results, Analyzing, and AnalysisError.
 - Result page shows compact ingredient bubbles without rule-based sublabels.
 - Non-food/non-ingredient scans show the API's readable reason inside the Analysis Error screen's `AI response` container.
 - Analysis and results screens use the shared type scale, spacing, and Zest color scheme.
 - Native launcher icon and splash resources use the shared Zest mark.
 - Compose splash appears on cold start before the scanner home screen.
 - Barcode mode changes the primary action text to `Scan Barcode`.
-- Settings and History use the same header scale and spacing.
+- Settings and Results use the same header scale and spacing.

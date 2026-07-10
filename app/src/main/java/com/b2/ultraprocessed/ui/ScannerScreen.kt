@@ -34,7 +34,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
@@ -123,7 +122,6 @@ fun ScannerScreen(
     onScan: (String) -> Unit,
     onBarcodeScanned: (String) -> Unit,
     onSettings: () -> Unit,
-    onHistory: () -> Unit,
     onSoundEffect: (AppSoundEvent) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -246,7 +244,6 @@ fun ScannerScreen(
             .background(DarkBg),
     ) {
         ScannerHomeHeader(
-            onHistory = onHistory,
             onSettings = onSettings,
         )
 
@@ -625,7 +622,6 @@ fun ScannerScreen(
 
 @Composable
 private fun ScannerHomeHeader(
-    onHistory: () -> Unit,
     onSettings: () -> Unit,
 ) {
     Row(
@@ -667,13 +663,6 @@ private fun ScannerHomeHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-
-        ScannerHeaderAction(
-            icon = Icons.Default.History,
-            contentDescription = "History",
-            onClick = onHistory,
-            testTag = AppTestTags.HEADER_ACTION_HISTORY,
-        )
 
         Spacer(modifier = Modifier.width(ScannerMetrics.Grid))
 

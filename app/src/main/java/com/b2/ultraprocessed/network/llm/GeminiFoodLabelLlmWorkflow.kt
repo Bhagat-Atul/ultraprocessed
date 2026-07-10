@@ -116,7 +116,7 @@ class GeminiFoodLabelLlmWorkflow(
     private fun requireApiKey(): String {
         val apiKey = apiKeyProvider.getApiKey()
         require(apiKey.isNotBlank()) {
-            "Add an LLM API key in Settings to analyze OCR text."
+            "Direct Gemini workflow requires an API key and is not used by the app proxy flow."
         }
         return apiKey
     }

@@ -1,159 +1,49 @@
 # Storage And Security
 
-Zest keeps user data local unless the user opts into an external lookup or model provider.
+Zest has a no-human-data-storage policy. Scan images, OCR text, normalized ingredients, analysis results, chat context, usage metadata, and failures are session-scoped and are not persisted by the Android app or backend logs.
 
-The storage contract is intentionally split by sensitivity:
+## Active storage contract
 
-- secrets live in encrypted preferences,
-- scan history lives in Room,
-- non-secret preferences live in app SharedPreferences,
-- captured images remain local files until deleted,
-- provider keys are never shown back in plain text.
+- Secrets: only the USDA lookup key is stored in encrypted preferences when configured.
+- Preferences: sound and disclaimer state contain no scan content.
+- Scan content: held in Compose memory for the active scan flow only.
+- Images: camera/import working files are deleted after analysis succeeds or fails, on app teardown, and at the next startup to remove abandoned files after process death.
+- Logs: `AnalysisDebugLogger` is a source-compatible no-op. OCR, requests, responses, failures, and telemetry are never written to Logcat or files.
+- Network: OCR text and result/chat context are sent to the backend proxy for the active request. The backend must keep request logging disabled or redacted and must not persist request bodies.
 
-## Files
+## Archived capability
 
-- `storage/secrets/SecretKeyManager.kt`
-- `storage/room/NovaDatabase.kt`
-- `storage/room/ScanResult.kt`
-- `storage/room/ScanResultDao.kt`
-- `storage/preferences/AppPreferences.kt`
-- `ui/UltraProcessedApp.kt`
-- `ui/SettingsScreen.kt`
+The former Room database, entity, DAO, History screen, and migration test are retained under `documentation/code-archive/session_only_storage/`. That directory is outside the Android Gradle source sets, so it cannot be compiled into or shipped in the APK. It is reference material only and must not be reactivated without an explicit product-policy change and privacy review.
 
-## Secrets
+The active app has no Room dependency, database initialization, History destination, result insert path, failed-scan insert path, or history UI action. The current result and chat transcript disappear when the process/session ends.
 
-API keys are stored with Android Keystore-backed encrypted preferences:
+## Data boundaries
 
-- `LLM_API_KEY` for text-only NOVA classification, ingredient cleanup, allergen detection, and result chat.
-- `USDA_API_KEY` for FoodData Central barcode lookup.
+Local transient data:
 
-Rules:
+- Camera captures and imported images while a scan is running.
+- On-device OCR output while the current analysis is running.
+- Current result and current result-chat messages while the result screen is open.
 
-- Never compile API keys into the app.
-- Never place API keys in `BuildConfig`.
-- Never preload saved keys into Compose state.
-- Save/delete methods return commit success.
-- UI stores only boolean key presence.
+Network data:
 
-## Non-Secret Preferences
+- USDA receives barcode/product lookup data when that feature is used.
+- The backend receives extracted text for analysis and current-result context plus chat history for result chat.
+- Images are not sent to the AI backend.
 
-`AppPreferences` stores local app settings that are not secrets.
+## Secret lifecycle
 
-Current preferences:
+USDA access uses Android Keystore-backed encrypted preferences. AI model credentials are not entered or stored in the app; the backend uses its Cloud Run runtime identity for Vertex AI.
 
-- Sound effects enabled or disabled.
-- Disclaimer accepted or not accepted.
+## Verification requirements
 
-This data is safe to keep in normal app preferences because it does not contain credentials, health data, or scan content.
+Release verification must prove:
 
-## Room History
+1. The APK has no Room classes or History route reachable from the UI.
+2. A successful scan does not create a database, scan row, image-retention record, or diagnostic file.
+3. A failed scan does not create a database row or diagnostic file.
+4. Relaunching the app does not restore a previous result, chat transcript, OCR value, or capture.
+5. Capture/import directories are empty after success, failure, teardown, and relaunch cleanup.
+6. Release logs contain no OCR text, model request/response body, or user question.
 
-Room persists scan results in `scan_results`.
-
-Stored fields include:
-
-- Product name
-- NOVA group
-- OCR/ingredient text
-- Raw extracted ingredient text
-- Verdict
-- Confidence
-- Detected markers
-- Allergen signals
-- Explanation
-- Engine used
-- Captured image path
-- Barcode-only flag
-- Timestamp
-- Usage estimate fields for tokens and cost
-- Failure flag and failure message for scans that reached analysis but did not produce a valid result
-
-```mermaid
-erDiagram
-    SCAN_RESULTS {
-        long id PK
-        string productName
-        int novaGroup
-        string ocrText
-        string cleanedIngredients
-        string verdict
-        float confidenceScore
-        string detectedMarkers
-        string allergens
-        string explanation
-        string engineUsed
-        string modelId
-        string modelName
-        string provider
-        int estimatedInputTokens
-        int estimatedOutputTokens
-        int estimatedTotalTokens
-        double estimatedCostUsd
-        string capturedImagePath
-        boolean isBarcodeLookupOnly
-        boolean isFailed
-        string failureMessage
-        long scannedAt
-    }
-```
-
-## Migration Policy
-
-The database is versioned and exports schemas under `app/schemas`. The current Room version is 5.
-
-- Version 2 adds product and UI history fields.
-- Version 3 adds allergen storage.
-- Version 4 adds model/provider usage estimate fields.
-- Version 5 adds failed-scan history support with `isFailed` and `failureMessage`.
-
-Migrations preserve existing rows with safe defaults and are covered by instrumentation migration coverage.
-
-## Data Boundaries
-
-Local:
-
-- Label captures
-- Imported images
-- OCR output
-- Normalized ingredients
-- Classification result
-- Allergen result
-- History rows
-- API keys
-- Sound preference state
-- App sounds bundled under `res/raw`
-
-Network:
-
-- USDA barcode lookup sends barcode/product query and uses a user-provided USDA key.
-- USDA requests do not use disk HTTP cache because the API key is part of the provider request URL.
-- Captured and uploaded label images are never sent to LLM providers.
-- ML Kit OCR extracts text on device.
-- LLM NOVA classification, ingredient cleanup, and allergen detection send extracted text/corrected ingredient JSON only, not the image.
-- OCR failures stop the flow before LLM classification or allergen detection.
-- Failed scans can still be persisted when a local image path exists, so History can show the failure and allow a rerun from that image.
-- If no LLM key is saved, the app cannot perform analysis. All classification is dependent on the LLM provider.
-
-## Secret Lifecycle
-
-```mermaid
-flowchart LR
-    Typed[User types key] --> Store[SecretKeyManager]
-    Store --> Encrypt[EncryptedSharedPreferences]
-    Encrypt --> Runtime[Read only when needed]
-    Runtime --> UI[Metadata only]
-```
-
-## Key Metadata Display
-
-The settings screen only shows metadata inferred from the saved LLM key:
-
-- provider
-- default model name
-- whether the provider is used text-only in Zest
-
-It does not display the key itself. USDA access is also stored through `SecretKeyManager` and treated as sensitive.
-
-## History Usage Fields
-
-History rows include token and cost fields. Provider workflows persist exact provider-reported usage when the API response includes it; local estimates are used only when the provider omits usage metadata.
+Any future request to restore history must first define retention, deletion, encryption, consent, and log-redaction requirements and update this document before code is reactivated.

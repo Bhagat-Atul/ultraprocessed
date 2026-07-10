@@ -23,7 +23,7 @@ flowchart LR
     CameraX --> File[App-local image file]
     File --> Analysis[FoodAnalysisPipeline]
     Analysis --> OCR[ML Kit OCR on device]
-    OCR --> LLM[Text-only staged LLM workflow]
+    OCR --> LLM[Text-only backend /analyze call]
 ```
 
 ## Gallery Import Flow
@@ -34,7 +34,7 @@ flowchart LR
     Uri --> Copy[Copy stream into app-local imports folder]
     Copy --> Analysis[FoodAnalysisPipeline]
     Analysis --> OCR[ML Kit OCR on device]
-    OCR --> LLM[Text-only staged LLM workflow]
+    OCR --> LLM[Text-only backend /analyze call]
 ```
 
 ## Barcode Flow
@@ -64,12 +64,12 @@ flowchart LR
 - Barcode delivery is guarded so the same visible barcode does not trigger repeated navigation.
 - Imported images are copied into app-local external files before analysis.
 - OCR uses ML Kit Text Recognition with Latin options.
-- OCR is intentionally behind the `OcrPipeline` interface so future on-device OCR can feed the same classification/allergen stages.
+- OCR is intentionally behind the `OcrPipeline` interface so future on-device OCR can feed the same backend analysis contract.
 - Test mode can disable live camera preview so UI tests do not require camera hardware.
 
 ## Failure Behavior
 
 - Missing image file returns a typed OCR/barcode failure.
 - Empty OCR text returns a user-friendly failure.
-- OCR text that is readable but not food-related is sent to the first LLM stage, which can return `containsConsumableFoodItem = false`. The app then stops and shows the model's human-readable rejection reason.
+- OCR text that is readable but not food-related is sent to backend `/analyze`, which can return `containsConsumableFoodItem = false`. The app then stops and shows the model's human-readable rejection reason.
 - Barcode miss can fall back to on-device OCR when an image path is available.

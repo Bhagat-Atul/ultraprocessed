@@ -11,38 +11,28 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import android.os.Environment
 import com.b2.ultraprocessed.BuildConfig
 import com.b2.ultraprocessed.storage.preferences.AppPreferences
-import com.b2.ultraprocessed.network.llm.LlmApiKeyVerifier
-import com.b2.ultraprocessed.network.llm.LlmProviderResolver
+import com.b2.ultraprocessed.analysis.FoodAnalysisPipeline
+import com.b2.ultraprocessed.network.llm.ProxyResultChatWorkflow
 import com.b2.ultraprocessed.network.llm.ResultChatContext
+import com.b2.ultraprocessed.network.llm.ResultChatHistoryMessage
 import com.b2.ultraprocessed.network.llm.ResultChatIngredientSignal
-import com.b2.ultraprocessed.network.llm.ResultChatWorkflowFactory
-import com.b2.ultraprocessed.network.llm.SecretLlmApiKeyProvider
-import com.b2.ultraprocessed.storage.room.NovaDatabase
-import com.b2.ultraprocessed.storage.room.ScanResult as ScanResultEntity
 import com.b2.ultraprocessed.storage.secrets.SecretKeyManager
 import com.b2.ultraprocessed.ui.audio.AppSoundEvent
 import com.b2.ultraprocessed.ui.audio.AppSoundManager
 import com.b2.ultraprocessed.ui.theme.DarkBg
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.Base64
-import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 data class AppTimingConfig(
     /** Production default: show the animated brand loading screen on cold start. */
@@ -60,32 +50,17 @@ fun UltraProcessedApp(
     val secretKeyManager = remember(appContext) { SecretKeyManager(appContext) }
     val appPreferences = remember(appContext) { AppPreferences(appContext) }
     val soundManager = remember(appContext) { AppSoundManager(appContext) }
-    val resultChatWorkflow = remember(appContext) {
-        ResultChatWorkflowFactory.create(
-            context = appContext,
-            apiKeyProvider = SecretLlmApiKeyProvider(secretKeyManager),
-        )
+    val resultChatWorkflow = remember { ProxyResultChatWorkflow() }
+    DisposableEffect(appContext) {
+        deleteSessionFiles(appContext)
+        onDispose { deleteSessionFiles(appContext) }
     }
-    val llmApiKeyVerifier = remember { LlmApiKeyVerifier() }
-    val scanResultDao = remember(appContext) {
-        NovaDatabase.getDatabase(appContext).scanResultDao()
-    }
-    val coroutineScope = rememberCoroutineScope()
-    val storedHistory by scanResultDao.getAllScanResults().collectAsState(initial = emptyList())
-    val historyItems = remember(storedHistory) {
-        storedHistory.map { it.toHistoryItemUi() }
-    }
-    val historySummary = remember(storedHistory) {
-        storedHistory.toHistoryUsageSummaryUi()
-    }
-    var hasLlmApiKey by rememberSaveable { mutableStateOf(false) }
     var hasUsdaApiKey by rememberSaveable { mutableStateOf(false) }
     var soundEffectsEnabled by rememberSaveable { mutableStateOf(appPreferences.soundEffectsEnabled) }
-    var llmKeyMetadata by remember { mutableStateOf<KeyMetadata?>(null) }
     var selectedModelId by rememberSaveable {
-        mutableStateOf(AppCatalog.modelOptions.first().id)
+        mutableStateOf(FoodAnalysisPipeline.DEFAULT_MODEL_ID)
     }
-    var lastCapturedPhotoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastCapturedPhotoPath by remember { mutableStateOf<String?>(null) }
     var barcodeValue by rememberSaveable { mutableStateOf<String?>(null) }
     var scanSessionId by remember { mutableIntStateOf(0) }
     var analysisMode by remember { mutableStateOf(AnalysisMode.LabelImage) }
@@ -138,13 +113,8 @@ fun UltraProcessedApp(
                 analysisErrorMessage = ""
                 navigateTo(AppDestination.Scanner)
             }
-            AppDestination.Settings,
-            AppDestination.History -> {
-                val target = previousDestination
-                    ?.takeUnless { it == AppDestination.Splash || it == AppDestination.Analyzing }
-                    ?: AppDestination.Scanner
-                previousDestination = null
-                destination = target
+            AppDestination.Settings -> {
+                navigateTo(AppDestination.Scanner)
             }
         }
     }
@@ -162,25 +132,7 @@ fun UltraProcessedApp(
                 secretKeyManager.saveApiKey(SecretKeyManager.USDA_API_KEY, bootstrapUsdaKey)
             }
         }
-        val savedLlmKey = runCatching {
-            secretKeyManager.getApiKey(SecretKeyManager.LLM_API_KEY)
-        }.getOrNull().orEmpty()
-        val provider = LlmProviderResolver.detectProvider(savedLlmKey)
-        hasLlmApiKey = savedLlmKey.isNotBlank()
-        llmKeyMetadata = provider?.let { provider ->
-            LlmProviderResolver.defaultModelForProvider(provider)?.let {
-                KeyMetadata(
-                    modelName = it.modelName,
-                    provider = it.provider,
-                    acceptsImages = it.acceptsImages,
-                )
-            }
-        }
-        provider?.let {
-            LlmProviderResolver.defaultModelForProvider(it)?.let { model ->
-                selectedModelId = model.modelId
-            }
-        }
+        runCatching { secretKeyManager.deleteApiKey(SecretKeyManager.LLM_API_KEY) }
         hasUsdaApiKey = runCatching {
             secretKeyManager.hasApiKey(SecretKeyManager.USDA_API_KEY)
         }.getOrDefault(false)
@@ -255,9 +207,6 @@ fun UltraProcessedApp(
                         onSettings = {
                             navigateTo(AppDestination.Settings, rememberCurrentForBack = true)
                         },
-                        onHistory = {
-                            navigateTo(AppDestination.History, rememberCurrentForBack = true)
-                        },
                         onSoundEffect = { event -> playSound(event) },
                     )
 
@@ -274,36 +223,16 @@ fun UltraProcessedApp(
                             ?: selectedModelId,
                         onSuccess = { result ->
                             barcodeValue = null
-                            coroutineScope.launch {
-                                runCatching {
-                                    scanResultDao.insertScanResult(result.toScanResultEntity())
-                                }.onSuccess {
-                                    playSound(AppSoundEvent.Success)
-                                    currentScanResult = result
-                                    navigateTo(AppDestination.Results)
-                                }.onFailure {
-                                    playSound(AppSoundEvent.Error)
-                                    deleteLocalScanImage(appContext, result.labelImagePath)
-                                    analysisErrorMessage = "Could not save scan history. Please try again."
-                                    navigateTo(AppDestination.AnalysisError)
-                                }
-                            }
+                            deleteLocalScanImage(appContext, result.labelImagePath)
+                            currentScanResult = result.copy(labelImagePath = null)
+                            lastCapturedPhotoPath = null
+                            playSound(AppSoundEvent.Success)
+                            navigateTo(AppDestination.Results)
                         },
                         onFailure = { message ->
                             playSound(AppSoundEvent.Error)
-                            val failedImagePath = lastCapturedPhotoPath
-                            if (!failedImagePath.isNullOrBlank()) {
-                                coroutineScope.launch {
-                                    runCatching {
-                                        scanResultDao.insertScanResult(
-                                            failedScanResultEntity(
-                                                imagePath = failedImagePath,
-                                                message = message,
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
+                            deleteLocalScanImage(appContext, lastCapturedPhotoPath)
+                            lastCapturedPhotoPath = null
                             analysisErrorMessage = message
                             barcodeValue = null
                             navigateTo(AppDestination.AnalysisError)
@@ -318,12 +247,9 @@ fun UltraProcessedApp(
                                 onScanAgain = {
                                     navigateTo(AppDestination.Scanner)
                                 },
-                                onOpenHistory = {
-                                    navigateTo(AppDestination.History, rememberCurrentForBack = true)
-                                },
-                                chatEnabled = hasLlmApiKey,
+                                chatEnabled = true,
                                 onSoundEffect = { event -> playSound(event) },
-                                onAskAboutResult = { question, onStatus ->
+                                onAskAboutResult = { question, history, onStatus ->
                                     val current = currentScanResult
                                     if (current == null) {
                                         Result.failure(IllegalStateException("No scan result available."))
@@ -349,6 +275,16 @@ fun UltraProcessedApp(
                                             result = chatContext,
                                             question = question,
                                             modelId = selectedModelId,
+                                            history = history.map { message ->
+                                                ResultChatHistoryMessage(
+                                                    role = when (message.role) {
+                                                        ResultChatRole.User -> "user"
+                                                        ResultChatRole.Assistant -> "assistant"
+                                                        ResultChatRole.System -> "system"
+                                                    },
+                                                    text = message.text,
+                                                )
+                                            },
                                             onStatus = onStatus,
                                         )
                                     }
@@ -372,87 +308,8 @@ fun UltraProcessedApp(
                     )
 
                     AppDestination.Settings -> SettingsScreen(
-                        hasLlmApiKey = hasLlmApiKey,
-                        selectedModelId = selectedModelId,
-                        modelOptions = AppCatalog.modelOptions,
-                        llmKeyMetadata = llmKeyMetadata,
                         soundEffectsEnabled = soundEffectsEnabled,
                         onBack = { navigateBackWithinApp() },
-                        onLlmApiKeySaved = { key ->
-                            runCatching {
-                                val provider = LlmProviderResolver.detectProvider(key)
-                                    ?: return@runCatching KeySaveResult(
-                                        success = false,
-                                        message = "Unsupported API key format. Use Gemini/OpenAI/Grok keys.",
-                                    )
-                                val verification = llmApiKeyVerifier.ping(key)
-                                if (!verification.valid) {
-                                    return@runCatching KeySaveResult(
-                                        success = false,
-                                        message = verification.message,
-                                    )
-                                }
-                                val saved = secretKeyManager.saveApiKey(SecretKeyManager.LLM_API_KEY, key)
-                                hasLlmApiKey = saved &&
-                                    secretKeyManager.hasApiKey(SecretKeyManager.LLM_API_KEY)
-                                llmKeyMetadata = provider?.let { providerId ->
-                                    LlmProviderResolver.defaultModelForProvider(providerId)?.let {
-                                        KeyMetadata(
-                                            modelName = it.modelName,
-                                            provider = it.provider,
-                                            acceptsImages = it.acceptsImages,
-                                        )
-                                    }
-                                }
-                                LlmProviderResolver.defaultModelForProvider(provider)?.let { model ->
-                                    selectedModelId = model.modelId
-                                }
-                                if (saved) {
-                                    KeySaveResult(
-                                        success = true,
-                                        message = "LLM key verified and saved securely.",
-                                    )
-                                } else {
-                                    KeySaveResult(
-                                        success = false,
-                                        message = "Could not save key. Please try again.",
-                                    )
-                                }
-                            }.getOrDefault(
-                                KeySaveResult(
-                                    success = false,
-                                    message = "Could not save key. Please try again.",
-                                ),
-                            )
-                        },
-                        onLlmApiKeyPing = { typedKey ->
-                            val keyToPing = typedKey
-                                ?.takeIf { it.isNotBlank() }
-                                ?: secretKeyManager.getApiKey(SecretKeyManager.LLM_API_KEY).orEmpty()
-                            if (keyToPing.isBlank()) {
-                                KeySaveResult(
-                                    success = false,
-                                    message = "Enter or save an API key before ping.",
-                                )
-                            } else {
-                                val verification = llmApiKeyVerifier.ping(keyToPing)
-                                KeySaveResult(
-                                    success = verification.valid,
-                                    message = verification.message,
-                                )
-                            }
-                        },
-                        onLlmApiKeyDeleted = {
-                            runCatching {
-                                val deleted = secretKeyManager.deleteApiKey(SecretKeyManager.LLM_API_KEY)
-                                if (deleted) {
-                                    hasLlmApiKey = false
-                                    llmKeyMetadata = null
-                                }
-                                deleted
-                            }.getOrDefault(false)
-                        },
-                        onModelSelected = { selectedModelId = it },
                         onSoundEffectsChanged = { enabled ->
                             soundEffectsEnabled = enabled
                             appPreferences.soundEffectsEnabled = enabled
@@ -462,37 +319,6 @@ fun UltraProcessedApp(
                         },
                     )
 
-                    AppDestination.History -> HistoryScreen(
-                        historyItems = historyItems,
-                        historySummary = historySummary,
-                        onBack = { navigateBackWithinApp() },
-                        onClearAll = {
-                            coroutineScope.launch {
-                                historyItems.forEach { item ->
-                                    deleteLocalScanImage(appContext, item.capturedImagePath)
-                                }
-                                scanResultDao.deleteAllScanResults()
-                            }
-                        },
-                        onClearItem = { item ->
-                            item.id.toLongOrNull()?.let { id ->
-                                coroutineScope.launch {
-                                    scanResultDao.deleteScanResultById(id)
-                                    deleteLocalScanImage(appContext, item.capturedImagePath)
-                                }
-                            }
-                        },
-                        onRerunItem = { item ->
-                            val path = item.capturedImagePath
-                            if (!path.isNullOrBlank()) {
-                                lastCapturedPhotoPath = path
-                                barcodeValue = null
-                                analysisMode = AnalysisMode.LabelImage
-                                scanSessionId++
-                                navigateTo(AppDestination.Analyzing)
-                            }
-                        },
-                    )
                 }
             }
 
@@ -508,108 +334,6 @@ private fun decodeBootstrapSecret(encoded: String): String {
     }.getOrDefault("")
 }
 
-private fun ScanResultUi.toScanResultEntity(): ScanResultEntity =
-    ScanResultEntity(
-        productName = productName,
-        novaGroup = novaGroup,
-        ocrText = rawIngredientText.ifBlank { allIngredients.joinToString(", ") },
-        cleanedIngredients = allIngredients.joinToString(", "),
-        verdict = "NOVA $novaGroup",
-        confidenceScore = confidence,
-        detectedMarkers = JSONArray(
-            problemIngredients.map {
-                JSONObject()
-                    .put("name", it.name)
-                    .put("reason", it.reason)
-            },
-        ).toString(),
-        allergens = JSONArray(allergens).toString(),
-        explanation = summary,
-        engineUsed = engineLabel,
-        modelId = usageEstimate?.modelId.orEmpty(),
-        modelName = usageEstimate?.modelName.orEmpty(),
-        provider = usageEstimate?.provider.orEmpty(),
-        estimatedInputTokens = usageEstimate?.estimatedInputTokens ?: 0,
-        estimatedOutputTokens = usageEstimate?.estimatedOutputTokens ?: 0,
-        estimatedTotalTokens = usageEstimate?.estimatedTotalTokens ?: 0,
-        estimatedCostUsd = usageEstimate?.estimatedCostUsd ?: 0.0,
-        capturedImagePath = labelImagePath,
-        isBarcodeLookupOnly = isBarcodeLookupOnly,
-        isFailed = false,
-        failureMessage = "",
-    )
-
-private fun failedScanResultEntity(
-    imagePath: String,
-    message: String,
-): ScanResultEntity =
-    ScanResultEntity(
-        productName = "Failed analysis",
-        novaGroup = 0,
-        ocrText = "",
-        cleanedIngredients = "",
-        verdict = "Failed",
-        confidenceScore = 0f,
-        detectedMarkers = "[]",
-        allergens = "[]",
-        explanation = message,
-        engineUsed = "Analysis pipeline",
-        capturedImagePath = imagePath,
-        isBarcodeLookupOnly = false,
-        isFailed = true,
-        failureMessage = message,
-    )
-
-private fun ScanResultEntity.toHistoryItemUi(): HistoryItemUi =
-    HistoryItemUi(
-        id = id.toString(),
-        productName = productName,
-        novaGroup = novaGroup,
-        scannedAt = SCAN_TIME_FORMAT.format(Date(scannedAt)),
-        scannedAtMillis = scannedAt,
-        summary = explanation,
-        capturedImagePath = capturedImagePath,
-        isBarcodeLookupOnly = isBarcodeLookupOnly,
-        modelName = modelName.ifBlank { engineUsed },
-        provider = provider.ifBlank { "" },
-        estimatedTokens = estimatedTotalTokens,
-        estimatedCostUsd = estimatedCostUsd,
-        isFailed = isFailed,
-        failureMessage = failureMessage,
-    )
-
-private fun List<ScanResultEntity>.toHistoryUsageSummaryUi(): HistoryUsageSummaryUi {
-    val totalTokens = sumOf { it.estimatedTotalTokens.coerceAtLeast(0) }
-    val totalCost = sumOf { it.estimatedCostUsd.coerceAtLeast(0.0) }
-    val modelUsage = asSequence()
-        .filter { it.modelId.isNotBlank() || it.estimatedTotalTokens > 0 || it.estimatedCostUsd > 0.0 }
-        .groupBy { it.modelId.ifBlank { it.engineUsed } }
-        .map { (modelKey, items) ->
-            val first = items.first()
-            val estimatedTokens = items.sumOf { it.estimatedTotalTokens.coerceAtLeast(0) }
-            val estimatedCost = items.sumOf { it.estimatedCostUsd.coerceAtLeast(0.0) }
-            val modelId = first.modelId.ifBlank { modelKey }
-            val metadata = com.b2.ultraprocessed.network.llm.LlmProviderResolver.metadataFromModelId(modelId)
-            ModelUsageUi(
-                modelName = first.modelName.ifBlank { metadata?.modelName ?: modelKey },
-                provider = first.provider.ifBlank { metadata?.provider ?: "Unknown" },
-                scans = items.size,
-                estimatedTokens = estimatedTokens,
-                estimatedCostUsd = estimatedCost,
-            )
-        }
-        .sortedByDescending { it.estimatedTokens }
-        .toList()
-    return HistoryUsageSummaryUi(
-        totalScans = size,
-        totalTokens = totalTokens,
-        estimatedCostUsd = totalCost,
-        modelUsage = modelUsage,
-    )
-}
-
-private val SCAN_TIME_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-
 private fun deleteLocalScanImage(
     appContext: android.content.Context,
     imagePath: String?,
@@ -624,6 +348,26 @@ private fun deleteLocalScanImage(
         ).map { it.canonicalFile }
         if (allowedRoots.any { root -> target.toPath().startsWith(root.toPath()) }) {
             target.delete()
+        }
+    }
+}
+
+/** Removes capture/import files left by an interrupted session. */
+private fun deleteSessionFiles(appContext: android.content.Context) {
+    listOfNotNull(
+        appContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+        File(appContext.filesDir, "captures"),
+        File(appContext.filesDir, "imports"),
+    ).forEach { directory ->
+        runCatching {
+            val targets = if (directory.name == Environment.DIRECTORY_PICTURES) {
+                listOf(File(directory, "captures"), File(directory, "imports"))
+            } else {
+                listOf(directory)
+            }
+            targets.forEach { target ->
+                target.listFiles()?.forEach { file -> if (file.isFile) file.delete() }
+            }
         }
     }
 }

@@ -5,7 +5,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp") version "2.3.2"
 }
 
 fun String.asBuildConfigStringLiteral(): String =
@@ -31,6 +30,11 @@ val proxyBaseUrl = localProperties
     .orEmpty()
     .trim()
     .ifBlank { "https://ultraprocessed-ai-proxy-894254677159.us-east1.run.app" }
+val analysisDiagnosticsEnabled = localProperties
+    .getProperty("ZEST_ANALYSIS_DIAGNOSTICS_ENABLED")
+    .orEmpty()
+    .trim()
+    .toBoolean()
 val releaseStoreFile = providers.environmentVariable("ZEST_RELEASE_STORE_FILE").orNull
 val releaseStorePassword = providers.environmentVariable("ZEST_RELEASE_STORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("ZEST_RELEASE_KEY_ALIAS").orNull
@@ -61,6 +65,11 @@ android {
             "String",
             "PROXY_BASE_URL",
             proxyBaseUrl.asBuildConfigStringLiteral(),
+        )
+        buildConfigField(
+            "boolean",
+            "ANALYSIS_DIAGNOSTICS_ENABLED",
+            analysisDiagnosticsEnabled.toString(),
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -196,10 +205,45 @@ val verifyNoDatalessSources = tasks.register("verifyNoDatalessSources") {
     }
 }
 
+val verifySessionOnlyStorage = tasks.register("verifySessionOnlyStorage") {
+    group = "verification"
+    description = "Fails if archived Room/history code or active persistence wiring returns."
+    doLast {
+        val sourceRoot = layout.projectDirectory.dir("src/main").asFile
+        val forbidden = listOf(
+            "NovaDatabase",
+            "ScanResultDao",
+            "androidx.room",
+            "HistoryScreen",
+            "AppDestination.History",
+            "insertScanResult",
+            "getAllScanResults",
+        )
+        val violations = sourceRoot.walkTopDown()
+            .filter {
+                it.isFile &&
+                    (it.extension == "kt" || it.extension == "xml") &&
+                    !it.relativeTo(sourceRoot).path.startsWith("archive/")
+            }
+            .flatMap { file ->
+                val contents = file.readText()
+                forbidden.filter { token -> contents.contains(token) }.map { token ->
+                    "${file.relativeTo(projectDir)} contains $token"
+                }
+            }
+            .toList()
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "Session-only storage policy violation:\n" + violations.joinToString("\n")
+            )
+        }
+    }
+}
+
 val verifySourceTreeForBuild = tasks.register("verifySourceTreeForBuild") {
     group = "verification"
     description = "Guards the Android source tree from retired files and macOS dataless placeholders."
-    dependsOn(verifyNoRetiredSourceFiles, verifyNoDatalessSources)
+    dependsOn(verifyNoRetiredSourceFiles, verifyNoDatalessSources, verifySessionOnlyStorage)
 }
 
 tasks.named("preBuild") {
@@ -214,14 +258,8 @@ tasks.matching {
     dependsOn(verifyReleaseSigning)
 }
 
-ksp {
-    arg("room.incremental", "true")
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
-
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.09.00")
-    val roomVersion = "2.8.4"
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -253,14 +291,9 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.room:room-testing:$roomVersion")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    // Room
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
 // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 // Security Crypto (Keystore)

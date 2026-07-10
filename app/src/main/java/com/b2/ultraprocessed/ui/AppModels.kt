@@ -53,23 +53,6 @@ data class ScanResultUi(
     val analyzedAtMillis: Long = System.currentTimeMillis(),
 )
 
-data class HistoryItemUi(
-    val id: String,
-    val productName: String,
-    val novaGroup: Int,
-    val scannedAt: String,
-    val scannedAtMillis: Long = 0L,
-    val summary: String,
-    val capturedImagePath: String? = null,
-    val isBarcodeLookupOnly: Boolean = false,
-    val modelName: String = "",
-    val provider: String = "",
-    val estimatedTokens: Int = 0,
-    val estimatedCostUsd: Double = 0.0,
-    val isFailed: Boolean = false,
-    val failureMessage: String = "",
-)
-
 enum class ResultChatRole {
     User,
     Assistant,
@@ -98,13 +81,6 @@ data class ModelUsageUi(
     val estimatedCostUsd: Double,
 )
 
-data class HistoryUsageSummaryUi(
-    val totalScans: Int,
-    val totalTokens: Int,
-    val estimatedCostUsd: Double,
-    val modelUsage: List<ModelUsageUi>,
-)
-
 enum class AppDestination {
     Splash,
     Disclaimer,
@@ -113,16 +89,15 @@ enum class AppDestination {
     Results,
     AnalysisError,
     Settings,
-    History,
 }
 
 object AppCatalog {
     val modelOptions = listOf(
         ModelOption(
-            id = "gemini-2.0-flash",
-            name = "Gemini 2.0 Flash",
+            id = "gemini-2.5-flash",
+            name = "Gemini 2.5 Flash",
             provider = "Gemini (Google)",
-            description = "Default text analysis model for on-device OCR output",
+            description = "Backend proxy analysis model for on-device OCR output",
             supportsImages = false,
             recommended = true,
         ),

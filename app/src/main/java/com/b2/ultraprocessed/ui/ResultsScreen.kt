@@ -27,7 +27,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,10 +73,13 @@ import org.json.JSONObject
 fun ResultsScreen(
     result: ScanResultUi,
     onScanAgain: () -> Unit,
-    onOpenHistory: () -> Unit,
     chatEnabled: Boolean,
     onSoundEffect: (AppSoundEvent) -> Unit = {},
-    onAskAboutResult: suspend (String, (String) -> Unit) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
+    onAskAboutResult: suspend (
+        String,
+        List<ResultChatMessageUi>,
+        (String) -> Unit,
+    ) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
 ) {
     val scrollState = rememberScrollState()
 
@@ -98,14 +100,6 @@ fun ResultsScreen(
                 stringResource(R.string.results_subtitle_nova_classification)
             },
             navigationAction = backHeaderAction(onScanAgain),
-            actions = listOf(
-                AppHeaderAction(
-                    icon = Icons.Default.History,
-                    contentDescription = "History",
-                    onClick = onOpenHistory,
-                    testTag = AppTestTags.HEADER_ACTION_HISTORY,
-                ),
-            ),
         )
 
         Column(
@@ -189,7 +183,11 @@ private fun FullAnalysisResultBody(
     result: ScanResultUi,
     chatEnabled: Boolean,
     onSoundEffect: (AppSoundEvent) -> Unit,
-    onAskAboutResult: suspend (String, (String) -> Unit) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
+    onAskAboutResult: suspend (
+        String,
+        List<ResultChatMessageUi>,
+        (String) -> Unit,
+    ) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
 ) {
     val verdict = verdictColors(result.novaGroup)
     val context = LocalContext.current
@@ -557,7 +555,11 @@ private fun ResultChatSection(
     enabled: Boolean,
     result: ScanResultUi,
     onSoundEffect: (AppSoundEvent) -> Unit,
-    onAskAboutResult: suspend (String, (String) -> Unit) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
+    onAskAboutResult: suspend (
+        String,
+        List<ResultChatMessageUi>,
+        (String) -> Unit,
+    ) -> Result<com.b2.ultraprocessed.network.llm.ResultChatReply>,
 ) {
     val scope = rememberCoroutineScope()
     val chatScrollState = rememberScrollState()
@@ -670,6 +672,7 @@ private fun ResultChatSection(
                     onClick = {
                         val question = input.trim()
                         if (!enabled || isSending || question.isBlank()) return@IconButton
+                        val priorMessages = messages.toList()
                         onSoundEffect(AppSoundEvent.Click)
                         messages.add(
                             ResultChatMessageUi(
@@ -682,7 +685,7 @@ private fun ResultChatSection(
                         statusMessage = checkingContextText
                         isSending = true
                         scope.launch {
-                            val reply = onAskAboutResult(question) { status ->
+                            val reply = onAskAboutResult(question, priorMessages) { status ->
                                 scope.launch {
                                     statusMessage = status
                                 }

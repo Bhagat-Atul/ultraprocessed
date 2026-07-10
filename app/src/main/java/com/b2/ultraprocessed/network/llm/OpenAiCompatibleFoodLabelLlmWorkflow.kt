@@ -100,7 +100,7 @@ class OpenAiCompatibleFoodLabelLlmWorkflow(
     private fun requireApiKey(): String {
         val apiKey = apiKeyProvider.getApiKey()
         require(apiKey.isNotBlank()) {
-            "Add an API key in Settings for the selected provider."
+            "Direct provider workflow requires an API key and is not used by the app proxy flow."
         }
         return apiKey
     }

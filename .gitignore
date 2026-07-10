@@ -37,6 +37,20 @@ Thumbs.db
 *.orig
 *.rej
 
+# Python local environments and caches
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+
+# Local editor/project scratch
+.vscode/
+tools/
+
 # Project-specific generated reports and caches
 app/.DS_Store
 app/src/.DS_Store

@@ -8,18 +8,13 @@ import com.b2.ultraprocessed.classify.IngredientAssessment
 import com.b2.ultraprocessed.ingredients.IngredientTextNormalizer
 import com.b2.ultraprocessed.classify.ClassificationResult
 import com.b2.ultraprocessed.network.llm.FoodLabelLlmWorkflow
-import com.b2.ultraprocessed.network.llm.GeminiFoodLabelLlmWorkflow
 import com.b2.ultraprocessed.network.llm.IngredientListAnalysis
 import com.b2.ultraprocessed.network.llm.IngredientClassification
 import com.b2.ultraprocessed.network.llm.IngredientExtraction
 import com.b2.ultraprocessed.network.llm.IngredientRiskMarker
 import com.b2.ultraprocessed.network.llm.LlmUsage
-import com.b2.ultraprocessed.network.llm.MultiProviderFoodLabelLlmWorkflow
 import com.b2.ultraprocessed.network.llm.NovaClassification
-import com.b2.ultraprocessed.network.llm.OpenAiCompatibleFoodLabelLlmWorkflow
 import com.b2.ultraprocessed.network.llm.ProxyFoodLabelLlmWorkflow
-import com.b2.ultraprocessed.network.llm.SecretLlmApiKeyProvider
-import com.b2.ultraprocessed.network.llm.SelectingFoodLabelLlmWorkflow
 import com.b2.ultraprocessed.network.usda.SecretUsdaApiKeyProvider
 import com.b2.ultraprocessed.network.usda.UsdaHttpClientFactory
 import com.b2.ultraprocessed.network.usda.UsdaApiService
@@ -310,10 +305,11 @@ class FoodAnalysisPipeline(
 
     companion object {
         const val MIN_NORMALIZED_LENGTH: Int = 12
-        const val DEFAULT_MODEL_ID: String = "gemini-2.0-flash"
-        private const val CLASSIFICATION_TIMEOUT_MILLIS = 35_000L
-        private const val INGREDIENT_LIST_TIMEOUT_MILLIS = 35_000L
-        private const val ALLERGEN_TIMEOUT_MILLIS = 12_000L
+        const val DEFAULT_MODEL_ID: String = "gemini-2.5-flash"
+        private const val PROXY_ANALYSIS_TIMEOUT_MILLIS = 110_000L
+        private const val CLASSIFICATION_TIMEOUT_MILLIS = PROXY_ANALYSIS_TIMEOUT_MILLIS
+        private const val INGREDIENT_LIST_TIMEOUT_MILLIS = PROXY_ANALYSIS_TIMEOUT_MILLIS
+        private const val ALLERGEN_TIMEOUT_MILLIS = PROXY_ANALYSIS_TIMEOUT_MILLIS
 
         fun create(context: Context): FoodAnalysisPipeline {
             val appContext = context.applicationContext
@@ -329,42 +325,7 @@ class FoodAnalysisPipeline(
                         client = UsdaHttpClientFactory.create(),
                     ),
                 ),
-                llmWorkflow = SelectingFoodLabelLlmWorkflow(
-                    proxyWorkflow = ProxyFoodLabelLlmWorkflow(),
-                    byokWorkflow = MultiProviderFoodLabelLlmWorkflow(
-                    geminiWorkflow = GeminiFoodLabelLlmWorkflow(
-                        context = appContext,
-                        apiKeyProvider = SecretLlmApiKeyProvider(
-                            SecretKeyManager(appContext),
-                        ),
-                    ),
-                    openAiWorkflow = OpenAiCompatibleFoodLabelLlmWorkflow(
-                        context = appContext,
-                        apiKeyProvider = SecretLlmApiKeyProvider(
-                            SecretKeyManager(appContext),
-                        ),
-                        baseUrl = "https://api.openai.com/v1",
-                        providerTag = "openai",
-                    ),
-                    grokWorkflow = OpenAiCompatibleFoodLabelLlmWorkflow(
-                        context = appContext,
-                        apiKeyProvider = SecretLlmApiKeyProvider(
-                            SecretKeyManager(appContext),
-                        ),
-                        baseUrl = "https://api.x.ai/v1",
-                        providerTag = "grok",
-                    ),
-                    groqWorkflow = OpenAiCompatibleFoodLabelLlmWorkflow(
-                        context = appContext,
-                        apiKeyProvider = SecretLlmApiKeyProvider(
-                            SecretKeyManager(appContext),
-                        ),
-                        baseUrl = "https://api.groq.com/openai/v1",
-                        providerTag = "groq",
-                    ),
-                    ),
-                    apiKeyProvider = SecretLlmApiKeyProvider(SecretKeyManager(appContext)),
-                ),
+                llmWorkflow = ProxyFoodLabelLlmWorkflow(),
             )
         }
     }
@@ -457,7 +418,7 @@ private fun IngredientClassification.toClassificationResult(): ClassificationRes
         markers = problemIngredients.map { it.name },
         explanation = summary,
         highlightTerms = problemIngredients.map { it.name },
-        engine = "Gemini staged LLM",
+        engine = "Zest proxy LLM",
         ingredientAssessments = ingredientAssessments,
     )
 
